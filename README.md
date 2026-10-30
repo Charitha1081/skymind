@@ -56,4 +56,4 @@ Python · FastAPI · LLM APIs · Redis · pgvector · Docker · Kubernetes · Pr
 
 ---
 
-Built by [Charitha Ande](https://charitha1081.github.io)
+Built by [Charithasri Ande](https://charitha1081.github.io)
