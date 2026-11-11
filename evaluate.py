@@ -1,6 +1,6 @@
 """SkyMind evaluation: measure answer quality instead of guessing.
 
-Three reports, all from the questions in evals/questions.yaml:
+Three reports, all from the questions in questions.yaml:
 
   search    Does each search method find the section that holds the answer, and find
             nothing for questions the documents can't answer? (offline, free, instant)
@@ -33,7 +33,7 @@ import knowledge
 import router
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-QUESTIONS_FILE = os.path.join(HERE, "evals", "questions.yaml")
+QUESTIONS_FILE = os.path.join(HERE, "questions.yaml")
 
 # A correct "refuse" answer says the information isn't available instead of inventing it.
 REFUSAL_PHRASES = (

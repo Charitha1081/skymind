@@ -55,7 +55,7 @@ Prices are list prices from November 2026; check each provider's page. Model nam
 
 ## Evaluation: measured quality, not guesses
 
-`evals/questions.yaml` holds 53 questions about the two sample companies: 45 with the facts a correct answer must contain, and 8 whose answer is *not* in the documents (the bot must say so). `evaluate.py` grades:
+`questions.yaml` holds 53 questions about the two sample companies: 45 with the facts a correct answer must contain, and 8 whose answer is *not* in the documents (the bot must say so). `evaluate.py` grades:
 
 - **search**: does each search method find the right section, and find nothing for off-topic questions?
 - **routing**: does the router send hard questions to the strong model?
@@ -238,7 +238,7 @@ Interactive docs: http://localhost:8000/docs
 
 ## Files
 
-`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `evals/questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
+`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
 ## Honest limits
 
