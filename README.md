@@ -61,6 +61,40 @@ What the hosted version does differently:
 
 Free-plan limits: the site sleeps after 15 minutes with no visitors and takes about a minute to wake, and free Redis is wiped on restart (the sample bots come back automatically). Before a demo, open the site a few minutes early and keep the admin page open (it refreshes every 2 seconds, so the site stays awake).
 
+## Sign in with Google and bot access
+
+When `GOOGLE_CLIENT_ID` is set:
+- **Companies sign in with Google to deploy.** Their bots belong to their Google account, so they can manage them from any device under **Your bots** on `/deploy`.
+- **Each company chooses who can use each bot** (when deploying, or later with **Access**):
+  - *Anyone with the link* (public)
+  - *Only people who sign in with Google*, optionally limited to email domains (`unt.edu`) and/or invited addresses
+- **Admins** can sign in with a Google account listed in `ADMIN_EMAILS` instead of typing the admin token.
+
+Without `GOOGLE_CLIENT_ID` everything still works: bots are public and owned through a manage key kept in the browser.
+
+### Get a Google client ID (about 10 minutes, free)
+
+1. Open https://console.cloud.google.com and create a project (e.g. "SkyMind").
+2. Go to **Google Auth Platform** (APIs & Services). Click **Get started**: app name *SkyMind*, your support email, audience **External**, your contact email.
+3. **Clients**, then **Create client**: type **Web application**. Under **Authorized JavaScript origins** add your site and local address, scheme and host only:
+   - `https://skymind-XXXX.onrender.com`
+   - `http://localhost` and `http://localhost:8000`
+   No redirect URIs are needed. Click **Create** and copy the **Client ID** (ends in `.apps.googleusercontent.com`). There is no secret to keep.
+4. **Audience**: while the app is in *Testing*, only the test users you add can sign in. Click **Publish app** to let anyone sign in (SkyMind only asks for name and email, the basic scopes).
+5. In Render, open the **skymind** service, then **Environment**, and add:
+   - `GOOGLE_CLIENT_ID` = the client ID
+   - `ADMIN_EMAILS` = your Gmail address (comma-separate several)
+   Save. Render redeploys in a few minutes.
+
+Locally: `set GOOGLE_CLIENT_ID=...` and `set ADMIN_EMAILS=you@gmail.com` before `docker compose up --build`.
+
+### How it is kept safe
+- Google's ID token is checked on the server: Google's signature (RS256 only), audience = your client ID, issuer = Google, not expired, email verified.
+- SkyMind then uses its own session: a random token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` on HTTPS). Only a SHA-256 hash is stored in Redis, and signing out deletes it.
+- Every change made with the sign-in cookie must carry an `X-Requested-With: SkyMind` header, which other websites cannot add, so cross-site request forgery is blocked.
+- Domain rules check Google Workspace's organisation claim (`hd`) when present, otherwise the verified email address. Google only fully vouches for Gmail and Workspace addresses. For other providers it confirms the address was verified when the account was made, so use invited addresses for anything sensitive.
+- The chat page shows which domains are allowed, never the invite list.
+
 ## Load testing
 
 Simulates many users chatting at once and prints latency, throughput and errors. It runs inside Docker, so you do not need Python on your computer. It refuses to run against a real (paid) model unless you add `--allow-real`.
@@ -94,9 +128,15 @@ The server and the load tester share one machine, so treat the numbers as a lowe
 
 | Method and path | Purpose |
 |---|---|
-| `POST /bots` | Deploy a bot from a spec and documents |
-| `GET /bots`, `GET /bots/{id}` | List bots, or get one bot's public info |
-| `DELETE /bots/{id}` | Remove a bot, its memory and its stats |
+| `POST /bots` | Deploy a bot from a spec and documents. Returns a secret `owner_key` (shown once) |
+| `GET /bots/{id}` | One bot's public info (name, company, greeting) |
+| `GET /bots/{id}/usage` | That bot's usage. Needs its `X-Owner-Key` (or the admin token) |
+| `DELETE /bots/{id}` | Remove a bot, its memory and its stats. Needs its `X-Owner-Key` (or the admin token) |
+| `GET /featured` | Public sample bots for the start page |
+| `POST /auth/google`, `POST /auth/logout`, `GET /me` | Sign in with a Google ID token, sign out, who is signed in |
+| `GET /my/bots` | Bots owned by the signed-in Google account |
+| `PATCH /bots/{id}/access` | Change who can chat with a bot (owner or admin) |
+| `GET /bots` | Every bot (admin token only) |
 | `POST /bots/{id}/chat` | Chat with a bot |
 | `GET /admin/overview` | All bots with plan, usage, latency, cost, budget status |
 | `DELETE /admin/stats` | Reset usage counters |
@@ -117,6 +157,10 @@ Interactive docs: http://localhost:8000/docs
 | MEMORY_TTL_SECONDS | 3600 | Conversation memory expiry |
 | WORKERS | 1 | Server processes inside the container |
 | MAX_BOTS | 50 | Maximum number of deployed bots |
+| GOOGLE_CLIENT_ID | (empty) | Turns on Sign in with Google and per-bot access rules |
+| ADMIN_EMAILS | (empty) | Google accounts that are admins (comma separated) |
+| REQUIRE_LOGIN_TO_DEPLOY | auto | `auto` = sign-in required to deploy when Google is on; or `true` / `false` |
+| SESSION_DAYS | 7 | How long a sign-in lasts |
 | ADMIN_TOKEN | generated | Token for /admin and admin API calls. If empty, one is generated, stored in Redis and printed at startup |
 | BIND_ADDRESS | 127.0.0.1 | Who can open SkyMind. `127.0.0.1` = only this computer; `0.0.0.0` = every device on your network |
 | CHAT_LIMIT_PER_SESSION | 60 | Messages per minute per conversation (0 = off) |
@@ -127,14 +171,14 @@ Interactive docs: http://localhost:8000/docs
 
 ## Files
 
-`main.py` (service and API), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
+`main.py` (service and API), `auth.py` (Google sign-in, sessions, bot access rules), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
 ## Honest limits
 
 - "Deploy" currently creates an isolated bot (own documents, memory, routing, budget and stats) inside one running service. Giving each customer a separate Kubernetes deployment with autoscaling is the next step.
 - Memory types `summary` and `long_term` are planned. Today every bot keeps the recent messages of each conversation.
 - Document retrieval uses keyword matching. Embeddings in pgvector are planned.
-- Admin actions are protected by one shared admin token. Customer accounts (each company sees only its own bots) are not built yet.
+- Accounts are individual Google sign-ins. Teams (several people managing one company's bots) are not built yet.
 - The deploy page is open to anyone who can reach the server, limited by MAX_BOTS. Keep BIND_ADDRESS at 127.0.0.1 unless you need others to connect.
 - Costs are estimates from placeholder prices until calibrated.
 - The UNT Helper sample uses facts collected from official UNT pages in November 2026. Verify details on unt.edu.
@@ -144,6 +188,7 @@ Interactive docs: http://localhost:8000/docs
 | Risk | Protection |
 |---|---|
 | Someone on the same Wi-Fi opens your SkyMind | Port 8000 is published to `127.0.0.1` only. Redis is never published. |
+| One company sees or changes another company's bots | Each bot gets a secret manage key (only its SHA-256 hash is stored). Usage and delete need that key. The full bot list is admin-only, the deploy page shows only "Your bots" from this browser, and bot links carry 8 random hex characters. |
 | Someone deletes bots or reads admin data | `/admin/overview`, `DELETE /admin/stats` and `DELETE /bots/{id}` need the `X-Admin-Token` header (constant-time check). The public start page uses `/stats`, which has totals only. |
 | Spam runs up a real API bill | Per-conversation rate limit, optional per-address limit, budget guard (strong model paused), then a hard stop at 120% of the model budget. |
 | Huge or malformed requests | 1 MB request limit, 200,000-character document limit, 4,000-character messages, session IDs restricted to letters, digits, `-` and `_`. |
@@ -163,4 +208,4 @@ Load testing reads the admin token automatically (from ADMIN_TOKEN or Redis). Fo
 5. Load test tool (done). Next: run it at 100 / 500 / 1,000 users and record the real numbers above
 6. Long-term memory with pgvector and embeddings
 7. Per-customer Kubernetes deployment with autoscaling
-8. Customer accounts and per-company access (admin token protection is done)
+8. Teams and roles for companies (Google sign-in and per-bot access are done)

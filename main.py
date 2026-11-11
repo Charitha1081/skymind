@@ -18,6 +18,7 @@ Security (see README, "Security"):
   - a hard spending stop on top of the budget guard
   - request size limit, input validation, security headers, prompt-injection guard
 """
+import hashlib
 import hmac
 import json
 import logging
@@ -32,7 +33,9 @@ import redis.asyncio as redis
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
+import auth
 import examples
 import knowledge
 import pages
@@ -58,6 +61,8 @@ CHAT_LIMIT_PER_IP = int(os.getenv("CHAT_LIMIT_PER_IP", "0"))  # messages per min
 HARD_STOP_FACTOR = float(os.getenv("HARD_STOP_FACTOR", "1.2"))  # stop answering at 120% of the model budget
 MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", "1000000"))  # reject requests larger than ~1 MB
 DEPLOY_LIMIT_PER_IP = int(os.getenv("DEPLOY_LIMIT_PER_IP", "20"))  # bot deploys per hour per client address (0 = off)
+ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}  # Google accounts that are admins
+REQUIRE_LOGIN_TO_DEPLOY = os.getenv("REQUIRE_LOGIN_TO_DEPLOY", "auto").lower()  # auto = yes when Google sign-in is on
 SEED_EXAMPLES = os.getenv("SEED_EXAMPLES", "false").lower() in ("1", "true", "yes")  # deploy sample bots on an empty start
 SESSION_ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
 
@@ -92,10 +97,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SkyMind", lifespan=lifespan)
 
+# Google's sign-in button needs its script, frame, style and endpoints (per Google's CSP guidance).
 PAGE_CSP = (
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; "
+    "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; "
+    "frame-src https://accounts.google.com/gsi/; "
+    "connect-src 'self' https://accounts.google.com/gsi/; "
+    "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
+CSRF_HEADER = "x-requested-with"
+CSRF_VALUE = "SkyMind"
 
 
 @app.middleware("http")
@@ -104,9 +116,16 @@ async def security_layer(request: Request, call_next):
     size = request.headers.get("content-length")
     if size and (not size.isdigit() or int(size) > MAX_BODY_BYTES):
         return JSONResponse({"detail": "Request is too large."}, status_code=413)
+    # CSRF: a request that changes something and relies on the sign-in cookie must carry our custom
+    # header. Other websites cannot add it (the browser would need a CORS preflight SkyMind never allows).
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and (
+        auth.SESSION_COOKIE in request.cookies or request.url.path.startswith("/auth/")
+    ):
+        if request.headers.get(CSRF_HEADER) != CSRF_VALUE:
+            return JSONResponse({"detail": "Missing X-Requested-With: SkyMind header."}, status_code=403)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"  # what Google's sign-in expects
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     if response.headers.get("content-type", "").startswith("text/html") and not request.url.path.startswith(("/docs", "/redoc")):
         response.headers["Content-Security-Policy"] = PAGE_CSP
@@ -114,11 +133,53 @@ async def security_layer(request: Request, call_next):
     return response
 
 
-async def require_admin(request: Request) -> None:
-    """Admin endpoints need the X-Admin-Token header (compared in constant time)."""
+async def current_user(request: Request) -> dict | None:
+    """The signed-in Google user for this request, from the session cookie."""
+    token = request.cookies.get(auth.SESSION_COOKIE, "")
+    if not token or len(token) > 200:
+        return None
+    raw = await app.state.redis.get(auth.session_key(token))
+    return json.loads(raw) if raw else None
+
+
+async def is_admin(request: Request) -> bool:
+    """Admin = the X-Admin-Token header, or a signed-in Google account listed in ADMIN_EMAILS."""
     given = request.headers.get("x-admin-token", "")
-    if not given or not hmac.compare_digest(given.encode(), str(app.state.admin_token).encode()):
+    if given and hmac.compare_digest(given.encode(), str(app.state.admin_token).encode()):
+        return True
+    if ADMIN_EMAILS:
+        user = await current_user(request)
+        return bool(user and user["email"] in ADMIN_EMAILS)
+    return False
+
+
+def login_required_to_deploy() -> bool:
+    if REQUIRE_LOGIN_TO_DEPLOY in ("true", "1", "yes"):
+        return True
+    if REQUIRE_LOGIN_TO_DEPLOY in ("false", "0", "no"):
+        return False
+    return auth.google_enabled()
+
+
+async def require_admin(request: Request) -> None:
+    """Admin endpoints need the X-Admin-Token header (compared in constant time) or an admin Google account."""
+    if not await is_admin(request):
         raise HTTPException(401, "Admin token required. Find it in the server window (SkyMind admin token: ...).")
+
+
+def hash_key(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+async def is_owner(request: Request, bot: dict) -> bool:
+    """The company that deployed a bot: its signed-in Google account, or the bot's manage key."""
+    if bot.get("owner_email"):
+        user = await current_user(request)
+        if user and user["email"] == bot["owner_email"]:
+            return True
+    given = request.headers.get("x-owner-key", "")
+    stored = bot.get("owner_key_hash", "")
+    return bool(given and stored) and hmac.compare_digest(hash_key(given), stored)
 
 
 async def rate_limited(key: str, limit: int, window_s: int = 60) -> bool:
@@ -162,7 +223,13 @@ def slugify(name: str) -> str:
 
 
 def public_info(bot: dict) -> dict:
-    return {"id": bot["id"], "name": bot["name"], "company": bot["company"], "greeting": bot["greeting"]}
+    return {
+        "id": bot["id"],
+        "name": bot["name"],
+        "company": bot["company"],
+        "greeting": bot["greeting"],
+        "access": auth.public_access(bot.get("access")),
+    }
 
 
 async def load_bot(bot_id: str) -> dict:
@@ -183,7 +250,7 @@ async def load_bot(bot_id: str) -> dict:
     return bot
 
 
-async def create_bot(body: dict, fixed_id: str | None = None) -> dict:
+async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = False, owner_email: str = "") -> dict:
     """Plan a bot, split its documents and store it. Raises HTTPException on bad input."""
     name = str(body.get("bot_name", "")).strip()
     if not 1 <= len(name) <= 60:
@@ -201,8 +268,11 @@ async def create_bot(body: dict, fixed_id: str | None = None) -> dict:
     try:
         spec = planner.parse_spec(body)
         result = planner.plan(spec)
+        access = auth.parse_access(body.get("access"))
     except ValueError as err:
         raise HTTPException(422, str(err))
+    if access["mode"] == "google" and not auth.google_enabled():
+        raise HTTPException(422, "Google sign-in is not set up on this server, so the bot can only be public.")
 
     if await app.state.redis.scard(BOTS_SET) >= MAX_BOTS:
         raise HTTPException(409, f"Bot limit reached ({MAX_BOTS}). Delete a bot first.")
@@ -212,7 +282,8 @@ async def create_bot(body: dict, fixed_id: str | None = None) -> dict:
         raise HTTPException(422, "Could not read any text from the documents.")
 
     greeting = str(body.get("greeting") or f"Hi! I'm the {name} assistant for {company}. How can I help?").strip()[:200]
-    bot_id = fixed_id or f"{slugify(name)}-{secrets.token_hex(2)}"
+    bot_id = fixed_id or f"{slugify(name)}-{secrets.token_hex(4)}"  # hard to guess
+    owner_key = secrets.token_urlsafe(24)  # shown once to the company that deployed it
     notes = list(result["notes"])
     if any(m in ("summary", "long_term") for m in spec["memory"]):
         notes.insert(0, "Memory types 'summary' and 'long_term' are planned. For now this bot keeps the recent messages of each conversation.")
@@ -227,6 +298,10 @@ async def create_bot(body: dict, fixed_id: str | None = None) -> dict:
         "plan": result,
         "llm_budget": max(spec["budget"] - result["cost"]["infra"], 0.0),
         "chunks": chunks,
+        "featured": featured,
+        "owner_key_hash": hash_key(owner_key),
+        "owner_email": owner_email,
+        "access": access,
     }
     await app.state.redis.set(bot_key(bot_id), json.dumps(bot))
     await app.state.redis.sadd(BOTS_SET, bot_id)
@@ -240,18 +315,31 @@ async def create_bot(body: dict, fixed_id: str | None = None) -> dict:
         "plan": result,
         "summary": planner.format_plan(result),
         "notes": notes,
+        "owner_key": owner_key,
+        "owner_email": owner_email,
+        "access": access,
     }
 
 
 async def seed_examples() -> None:
-    """On an empty start (free hosting wipes Redis), deploy the sample bots with stable links."""
+    """Make sure the sample bots exist at stable links (free hosting wipes Redis on restart)."""
     if not await app.state.redis.set("seed_lock", "1", nx=True, ex=60):
         return  # another worker is seeding
-    if await app.state.redis.scard(BOTS_SET) == 0:
-        for ex in examples.EXAMPLES:
+    created = []
+    for ex in examples.EXAMPLES:
+        bot_id = slugify(ex["bot_name"])
+        raw = await app.state.redis.get(bot_key(bot_id))
+        if raw is None:
             body = {k: v for k, v in ex.items() if k != "key"}
-            await create_bot(body, fixed_id=slugify(ex["bot_name"]))
-        print("SkyMind: sample bots deployed (" + ", ".join("/chat/" + slugify(e["bot_name"]) for e in examples.EXAMPLES) + ")", flush=True)
+            await create_bot(body, fixed_id=bot_id, featured=True)
+            created.append("/chat/" + bot_id)
+        else:
+            bot = json.loads(raw)
+            if not bot.get("featured"):
+                bot["featured"] = True
+                await app.state.redis.set(bot_key(bot_id), json.dumps(bot))
+    if created:
+        print("SkyMind: sample bots deployed (" + ", ".join(created) + ")", flush=True)
 
 
 @app.post("/bots")
@@ -274,21 +362,34 @@ async def deploy_bot(
     ),
 ):
     """Deploy a chatbot for a company: plan it, load its documents, and start serving it."""
+    user = await current_user(request)
+    if login_required_to_deploy() and not user and not await is_admin(request):
+        raise HTTPException(401, "Sign in with Google to deploy a bot.")
     client_ip = request.client.host if request.client else "unknown"
     if await rate_limited(f"deploy:{client_ip}", DEPLOY_LIMIT_PER_IP, window_s=3600):
         raise HTTPException(429, "Too many bots deployed from your address this hour. Please try again later.")
-    return await create_bot(body)
+    return await create_bot(body, owner_email=user["email"] if user else "")
 
 
-@app.get("/bots")
-async def list_bots():
+async def all_bots() -> list[dict]:
     bots = []
-    for bot_id in sorted(await app.state.redis.smembers(BOTS_SET)):
+    for bot_id in await app.state.redis.smembers(BOTS_SET):
         raw = await app.state.redis.get(bot_key(bot_id))
         if raw:
-            bot = json.loads(raw)
-            bots.append((bot["created_at"], public_info(bot)))
-    return [info for _, info in sorted(bots, key=lambda x: x[0])]
+            bots.append(json.loads(raw))
+    return sorted(bots, key=lambda b: b["created_at"])
+
+
+@app.get("/bots", dependencies=[Depends(require_admin)])
+async def list_bots():
+    """Every bot (SkyMind operators only: companies must not see each other's bots)."""
+    return [public_info(b) for b in await all_bots()]
+
+
+@app.get("/featured")
+async def featured_bots():
+    """Public sample bots shown on the start page."""
+    return [public_info(b) for b in await all_bots() if b.get("featured")]
 
 
 @app.get("/bots/{bot_id}")
@@ -296,9 +397,53 @@ async def get_bot(bot_id: str):
     return public_info(await load_bot(bot_id))
 
 
-@app.delete("/bots/{bot_id}", dependencies=[Depends(require_admin)])
-async def delete_bot(bot_id: str):
-    await load_bot(bot_id)  # 404 if missing
+@app.get("/bots/{bot_id}/usage")
+async def bot_usage(bot_id: str, request: Request):
+    """Usage of one bot, for the company that owns it (manage key) or an admin."""
+    bot = await load_bot(bot_id)
+    if not (await is_owner(request, bot) or await is_admin(request)):
+        raise HTTPException(403, "Only the company that deployed this bot can see its usage.")
+    stats, _ = await bot_stats(bot_id)
+    return {
+        "id": bot_id,
+        "name": bot["name"],
+        "company": bot["company"],
+        "requests": stats["requests"],
+        "latency": stats["latency"],
+        "actual_cost_usd": stats["actual_cost_usd"],
+        "saved_percent": stats["saved_percent"],
+        "llm_budget_usd": round(bot["llm_budget"], 2),
+        "budget_guard": stats["actual_cost_usd"] >= bot["llm_budget"],
+        "access": bot.get("access") or {"mode": "public", "allowed_domains": [], "allowed_emails": []},
+    }
+
+
+@app.patch("/bots/{bot_id}/access")
+async def update_access(bot_id: str, request: Request, body: dict = Body(...)):
+    """Change who can chat with a bot (owner or admin)."""
+    bot = await load_bot(bot_id)
+    if not (await is_owner(request, bot) or await is_admin(request)):
+        raise HTTPException(403, "Only the company that deployed this bot can change who can use it.")
+    try:
+        access = auth.parse_access(body)
+    except ValueError as err:
+        raise HTTPException(422, str(err))
+    if access["mode"] == "google" and not auth.google_enabled():
+        raise HTTPException(422, "Google sign-in is not set up on this server, so the bot can only be public.")
+    raw = await app.state.redis.get(bot_key(bot_id))
+    stored = json.loads(raw)
+    stored["access"] = access
+    await app.state.redis.set(bot_key(bot_id), json.dumps(stored))
+    app.state.bot_cache.pop(bot_id, None)
+    return {"id": bot_id, "access": access}
+
+
+@app.delete("/bots/{bot_id}")
+async def delete_bot(bot_id: str, request: Request):
+    """Delete a bot: its owner (manage key) or a SkyMind admin."""
+    bot = await load_bot(bot_id)  # 404 if missing
+    if not (await is_owner(request, bot) or await is_admin(request)):
+        raise HTTPException(401, "Only the company that deployed this bot, or a SkyMind admin, can delete it.")
     r = app.state.redis
     keys = [bot_key(bot_id), stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id)]
     async for key in r.scan_iter(match=f"chat:{bot_id}:*"):
@@ -444,6 +589,16 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
     bot = await load_bot(bot_id)
     r = app.state.redis
 
+    # Who may use this bot is the company's choice: public, any Google account, or certain domains/emails.
+    user = await current_user(request)
+    allowed, why = auth.access_allows(bot.get("access"), user)
+    if not allowed:
+        if why == "signin":
+            raise HTTPException(401, f"Sign in with Google to use {bot['company']}'s assistant.")
+        domains = (bot.get("access") or {}).get("allowed_domains") or []
+        hint = f" It is for {', '.join('@' + d for d in domains)} accounts." if domains else ""
+        raise HTTPException(403, f"{user['email']} doesn't have access to this assistant.{hint}")
+
     # Abuse protection: per-conversation and (optional) per-address limits, then a hard spending stop.
     client_ip = request.client.host if request.client else "unknown"
     if await rate_limited(f"s:{bot_id}:{req.session_id}", CHAT_LIMIT_PER_SESSION) or await rate_limited(
@@ -531,6 +686,8 @@ async def admin_overview():
                 "llm_budget_usd": round(bot["llm_budget"], 2),
                 "budget_guard": stats["actual_cost_usd"] >= bot["llm_budget"],
                 "stats": stats,
+                "owner_email": bot.get("owner_email", ""),
+                "access": (bot.get("access") or {}).get("mode", "public"),
             }
         )
     rows.sort(key=lambda b: b["created_at"])
@@ -572,6 +729,81 @@ async def public_stats():
         baseline += s["all_strong_cost_usd"]
     saved = round(100 * (baseline - actual) / baseline, 1) if baseline else 0.0
     return {"bots": len(bot_ids), "requests": requests, "saved_percent": saved}
+
+
+# ---------- Sign in with Google ----------
+
+class GoogleLogin(BaseModel):
+    credential: str = Field(min_length=20, max_length=5000)
+
+
+@app.post("/auth/google")
+async def google_login(req: GoogleLogin, request: Request):
+    """Exchange a Google ID token for a SkyMind session cookie."""
+    if not auth.google_enabled():
+        raise HTTPException(404, "Google sign-in is not set up on this server.")
+    client_ip = request.client.host if request.client else "unknown"
+    if await rate_limited(f"login:{client_ip}", 20):
+        raise HTTPException(429, "Too many sign-in attempts. Please wait a minute.")
+    try:
+        user = await run_in_threadpool(auth.verify_google_token, req.credential)  # may fetch Google's keys
+    except ValueError as err:
+        raise HTTPException(401, str(err))
+    token = secrets.token_urlsafe(32)
+    await app.state.redis.set(auth.session_key(token), json.dumps(user), ex=auth.SESSION_SECONDS)
+    response = JSONResponse({"email": user["email"], "name": user["name"]})
+    response.set_cookie(
+        auth.SESSION_COOKIE,
+        token,
+        max_age=auth.SESSION_SECONDS,
+        httponly=True,  # page scripts can't read it, so injected scripts can't steal it
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@app.post("/auth/logout")
+async def logout(request: Request):
+    token = request.cookies.get(auth.SESSION_COOKIE, "")
+    if token:
+        await app.state.redis.delete(auth.session_key(token))
+    response = JSONResponse({"signed_out": True})
+    response.delete_cookie(auth.SESSION_COOKIE, path="/")
+    return response
+
+
+@app.get("/me")
+async def me(request: Request):
+    """Who is signed in, and what the pages should offer."""
+    user = await current_user(request)
+    return {
+        "google_enabled": auth.google_enabled(),
+        "google_client_id": auth.GOOGLE_CLIENT_ID,
+        "login_required_to_deploy": login_required_to_deploy(),
+        "user": {"email": user["email"], "name": user["name"]} if user else None,
+        "is_admin": await is_admin(request),
+    }
+
+
+@app.get("/my/bots")
+async def my_bots(request: Request):
+    """Bots owned by the signed-in Google account."""
+    user = await current_user(request)
+    if not user:
+        raise HTTPException(401, "Sign in with Google to see your bots.")
+    rows = []
+    for bot in await all_bots():
+        if bot.get("owner_email") == user["email"]:
+            stats, _ = await bot_stats(bot["id"])
+            rows.append({
+                **public_info(bot),
+                "access": bot.get("access") or {"mode": "public", "allowed_domains": [], "allowed_emails": []},
+                "requests": stats["requests"],
+                "saved_percent": stats["saved_percent"],
+            })
+    return rows
 
 
 # ---------- Planner ----------

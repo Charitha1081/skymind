@@ -33,6 +33,10 @@ services:
         value: "20"
       - key: WORKERS
         value: "1"
+      - key: GOOGLE_CLIENT_ID
+        sync: false                  # paste your Google OAuth client ID in the Render dashboard
+      - key: ADMIN_EMAILS
+        sync: false                  # e.g. you@gmail.com: these Google accounts can open /admin
 
   - type: keyvalue
     name: skymind-redis

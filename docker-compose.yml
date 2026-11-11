@@ -25,6 +25,8 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       CHAT_LIMIT_PER_SESSION: ${CHAT_LIMIT_PER_SESSION:-60}
       CHAT_LIMIT_PER_IP: ${CHAT_LIMIT_PER_IP:-0}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
     security_opt:
       - no-new-privileges:true
     depends_on:

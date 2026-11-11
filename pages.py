@@ -52,6 +52,12 @@ a { color: var(--zenith); text-underline-offset: 3px; }
 .site-nav a { color: var(--muted); text-decoration: none; font-weight: 550; padding: 20px 0 18px; border-bottom: 2px solid transparent; }
 .site-nav a:hover { color: var(--ink); }
 .site-nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--zenith); }
+.authbox { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.authbox:empty { display: none; }
+.userchip { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); max-width: 260px; }
+.userchip .av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; background: linear-gradient(160deg, #3A2BA8, #1E9BD7); flex: none; }
+.userchip .em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.autherr { font-size: 12.5px; color: var(--bad); }
 
 /* type */
 h1 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif; font-weight: 700; letter-spacing: -0.028em; line-height: 1.06; margin: 0; }
@@ -138,7 +144,7 @@ def _header(active=""):
         + link("/", "home", "Overview")
         + link("/deploy", "deploy", "Deploy a bot")
         + link("/admin", "admin", "Admin console")
-        + "</nav></div></header>"
+        + '</nav><div class="authbox" id="authbox"></div></div></header>'
     )
 
 
@@ -160,6 +166,90 @@ def _shell(title, body, script, extra_css=""):
         "<style>" + COMMON_CSS + extra_css + "</style>\n</head>\n<body>\n"
         + body + "\n<script>\n" + script + "\n</script>\n</body>\n</html>\n"
     )
+
+
+AUTH_JS = r"""
+// ---- Sign in with Google (shared by every page) ----
+var SKY = { me: { google_enabled: false, user: null, is_admin: false }, googleReady: false };
+function skyHeaders(extra) { return Object.assign({ "X-Requested-With": "SkyMind" }, extra || {}); }
+function skyLoadGoogle(done) {
+  if (window.google && google.accounts && google.accounts.id) { done(); return; }
+  var s = document.createElement("script");
+  s.src = "https://accounts.google.com/gsi/client";
+  s.async = true;
+  s.onload = done;
+  document.head.append(s);
+}
+function skyRenderButton(el, text) {
+  if (!el || !SKY.me.google_enabled) return;
+  skyLoadGoogle(function () {
+    if (!SKY.googleReady) {
+      google.accounts.id.initialize({ client_id: SKY.me.google_client_id, callback: skyOnCredential, auto_select: false, cancel_on_tap_outside: true });
+      SKY.googleReady = true;
+    }
+    el.replaceChildren();
+    google.accounts.id.renderButton(el, { type: "standard", theme: "outline", size: "medium", shape: "pill", text: text || "signin_with" });
+  });
+}
+async function skyOnCredential(resp) {
+  try {
+    var r = await fetch("/auth/google", { method: "POST", headers: skyHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ credential: resp.credential }) });
+    if (!r.ok) {
+      var d = {};
+      try { d = await r.json(); } catch (e) {}
+      skyAuthError(typeof d.detail === "string" ? d.detail : "Sign-in failed. Please try again.");
+      return;
+    }
+    location.reload();
+  } catch (e) { skyAuthError("Could not reach SkyMind to finish signing in."); }
+}
+function skyAuthError(msg) {
+  var box = document.getElementById("authbox");
+  if (!box) return;
+  var s = document.createElement("span");
+  s.className = "autherr";
+  s.textContent = msg;
+  box.append(s);
+}
+async function skySignOut() {
+  try { await fetch("/auth/logout", { method: "POST", headers: skyHeaders() }); } catch (e) {}
+  try { google.accounts.id.disableAutoSelect(); } catch (e) {}
+  location.reload();
+}
+function skyRenderAuthBox() {
+  var box = document.getElementById("authbox");
+  if (!box) return;
+  box.replaceChildren();
+  if (!SKY.me.google_enabled) return;
+  if (SKY.me.user) {
+    var chip = document.createElement("span");
+    chip.className = "userchip";
+    chip.title = SKY.me.user.email;
+    var av = document.createElement("span");
+    av.className = "av";
+    av.textContent = (SKY.me.user.name || SKY.me.user.email).trim().charAt(0).toUpperCase();
+    var em = document.createElement("span");
+    em.className = "em";
+    em.textContent = SKY.me.user.email;
+    chip.append(av, em);
+    var out = document.createElement("button");
+    out.type = "button";
+    out.className = "quiet";
+    out.textContent = "Sign out";
+    out.onclick = skySignOut;
+    box.append(chip, out);
+  } else {
+    var holder = document.createElement("div");
+    box.append(holder);
+    skyRenderButton(holder);
+  }
+}
+var skyReady = (async function () {
+  try { SKY.me = await (await fetch("/me")).json(); } catch (e) {}
+  skyRenderAuthBox();
+  return SKY.me;
+})();
+"""
 
 
 # ------------------------------------------------------------------ landing
@@ -292,7 +382,7 @@ LANDING_BODY = _header("home") + r"""
       <div class="view">
         <div class="who">Their users<span>/chat</span></div>
         <div>
-          <p>Chat with an assistant that answers only from that company's documents.</p>
+          <p>Chat with an assistant that answers only from that company's documents. Try the samples:</p>
           <div class="botlinks" id="botlist"><span class="sub small">Loading bots...</span></div>
         </div>
         <span></span>
@@ -332,8 +422,13 @@ function money(x) {
 async function loadBots() {
   var box = document.getElementById("botlist");
   try {
-    var res = await fetch("/bots");
+    var res = await fetch("/featured");
     var bots = await res.json();
+    var mine = [];
+    try { mine = JSON.parse(localStorage.getItem("sm_my_bots") || "[]"); } catch (e) {}
+    var seen = {};
+    bots.forEach(function (b) { seen[b.id] = true; });
+    mine.forEach(function (b) { if (!seen[b.id]) { bots.push({ id: b.id, name: b.name + " (yours)", company: b.company }); } });
     box.replaceChildren();
     if (!bots.length) {
       var s = document.createElement("span");
@@ -366,7 +461,7 @@ loadBots();
 loadStats();
 """
 
-LANDING_HTML = _shell("SkyMind: AI helpers, deployed and managed", LANDING_BODY, LANDING_JS, LANDING_CSS)
+LANDING_HTML = _shell("SkyMind: AI helpers, deployed and managed", LANDING_BODY, AUTH_JS + LANDING_JS, LANDING_CSS)
 
 
 # ------------------------------------------------------------------ deploy (page 1: companies)
@@ -409,6 +504,10 @@ DEPLOY_CSS = r"""
 .botrow:first-child { border-top: 0; }
 .botrow .sub { font-size: 13px; }
 
+.loginnote { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 18px; border-color: var(--zenith); background: var(--zenith-soft); }
+.accessedit { margin-top: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); width: 100%; }
+.accessedit .row { gap: 0 12px; }
+.botrow .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .plan { position: static; }
@@ -421,6 +520,10 @@ DEPLOY_BODY = _header("deploy") + r"""
     <h1>Deploy your AI helper</h1>
     <p class="lead">Describe what you need. The plan on the right updates as you type, so you see servers, speed and monthly cost before you deploy.</p>
     <div class="samples" id="examples"><span class="sub small">Loading samples...</span></div>
+    <div class="panel loginnote" id="loginNote" hidden>
+      <div><b>Sign in with Google to deploy.</b> Your bots are saved to your account, so you can manage them from any device.</div>
+      <div id="loginBtn"></div>
+    </div>
   </div>
 
   <div class="layout">
@@ -454,8 +557,27 @@ DEPLOY_BODY = _header("deploy") + r"""
         </div>
       </section>
 
+      <section class="panel" aria-labelledby="access-title">
+        <h2 class="step-title" id="access-title"><b>2</b>Who can use it?</h2>
+        <div class="row">
+          <div><label for="access_mode">Access</label>
+            <select id="access_mode">
+              <option value="public">Anyone with the link</option>
+              <option value="google">Only people who sign in with Google</option>
+            </select></div>
+        </div>
+        <div id="access_more" hidden>
+          <div class="row">
+            <div><label for="access_domains">Allowed email domains <span class="sub">(optional)</span></label><input id="access_domains" placeholder="unt.edu, my.unt.edu"></div>
+            <div><label for="access_emails">Allowed people <span class="sub">(optional)</span></label><input id="access_emails" placeholder="dean@unt.edu, alex@gmail.com"></div>
+          </div>
+          <div class="hint">Leave both empty to let any Google account in. Fill either one to allow only those domains or people.</div>
+        </div>
+        <div class="hint" id="access_note"></div>
+      </section>
+
       <section class="panel" aria-labelledby="docs-title">
-        <h2 class="step-title" id="docs-title"><b>2</b>What should it know?</h2>
+        <h2 class="step-title" id="docs-title"><b>3</b>What should it know?</h2>
         <p class="sub" style="margin:0">Paste FAQs, policies or product info, or upload a text file. Lines starting with # or ## become section titles.</p>
         <label for="file">Upload a .txt, .md or .csv file</label>
         <input id="file" type="file" accept=".txt,.md,.markdown,.csv">
@@ -509,7 +631,8 @@ DEPLOY_BODY = _header("deploy") + r"""
   </div>
 
   <section class="panel" style="margin-top:16px">
-    <h2>Deployed bots</h2>
+    <h2>Your bots</h2>
+    <p class="sub small" style="margin:0 0 4px" id="bots_note">Only your bots appear here. Other companies can't see them, and you can't see theirs.</p>
     <div id="bots"><span class="sub">Loading...</span></div>
   </section>
 </main>
@@ -600,7 +723,7 @@ async function refreshPlan() {
   try {
     var res = await fetch("/plan", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: skyHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(spec())
     });
     var data = await res.json();
@@ -638,39 +761,191 @@ async function loadExamples() {
   } catch (e) { box.textContent = "Could not load samples."; }
 }
 
-async function refreshBots() {
-  var box = $("bots");
+function myBots() {
+  try { return JSON.parse(localStorage.getItem("sm_my_bots") || "[]"); } catch (e) { return []; }
+}
+function saveMyBots(list) {
+  try { localStorage.setItem("sm_my_bots", JSON.stringify(list)); } catch (e) {}
+}
+function ownerHeaders(bot, extra) {
+  var h = skyHeaders(extra);
+  if (bot.key) h["X-Owner-Key"] = bot.key;
+  return h;
+}
+function accessLabel(a) {
+  a = a || { mode: "public" };
+  if (a.mode !== "google") return "Public link";
+  var parts = (a.allowed_domains || []).map(function (d) { return "@" + d; });
+  if ((a.allowed_emails || []).length) parts.push(a.allowed_emails.length + " invited");
+  return "Google sign-in" + (parts.length ? ": " + parts.join(", ") : "");
+}
+function readAccess(prefix) {
+  return {
+    mode: $(prefix + "mode").value,
+    allowed_domains: $(prefix + "domains").value,
+    allowed_emails: $(prefix + "emails").value
+  };
+}
+
+async function deleteMine(bot) {
+  if (!confirm("Delete " + bot.name + "? Its documents, memory and stats will be removed.")) return;
   try {
-    var res = await fetch("/bots");
-    var bots = await res.json();
-    box.replaceChildren();
-    if (!bots.length) { box.textContent = "No bots deployed yet. Fill in the form and press Deploy bot."; return; }
-    bots.forEach(function (b) {
-      var row = document.createElement("div");
-      row.className = "botrow";
-      var left = document.createElement("div");
-      var name = document.createElement("b");
-      name.textContent = b.name;
-      var sub = document.createElement("div");
-      sub.className = "sub";
-      sub.textContent = b.company + "  /chat/" + b.id;
-      left.append(name, sub);
-      var a = document.createElement("a");
-      a.className = "btn";
-      a.href = "/chat/" + encodeURIComponent(b.id);
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.textContent = "Open chat";
-      row.append(left, a);
-      box.append(row);
-    });
-  } catch (e) { box.textContent = "Could not load bots."; }
+    var res = await fetch("/bots/" + encodeURIComponent(bot.id), { method: "DELETE", headers: ownerHeaders(bot) });
+    if (res.ok || res.status === 404) { saveMyBots(myBots().filter(function (b) { return b.id !== bot.id; })); }
+  } catch (e) {}
+  refreshBots();
+}
+
+function accessEditor(bot, row) {
+  var old = row.querySelector(".accessedit");
+  if (old) { old.remove(); return; }
+  var a = bot.access || { mode: "public", allowed_domains: [], allowed_emails: [] };
+  var box = document.createElement("div");
+  box.className = "accessedit";
+  var id = "ae_" + bot.id + "_";
+  function field(labelText, el) {
+    var w = document.createElement("div");
+    var l = document.createElement("label");
+    l.htmlFor = el.id;
+    l.textContent = labelText;
+    w.append(l, el);
+    return w;
+  }
+  var sel = document.createElement("select");
+  sel.id = id + "mode";
+  [["public", "Anyone with the link"], ["google", "Only people who sign in with Google"]].forEach(function (o) {
+    var op = document.createElement("option");
+    op.value = o[0];
+    op.textContent = o[1];
+    if (!SKY.me.google_enabled && o[0] === "google") op.disabled = true;
+    sel.append(op);
+  });
+  sel.value = a.mode;
+  var dom = document.createElement("input");
+  dom.id = id + "domains";
+  dom.placeholder = "unt.edu";
+  dom.value = (a.allowed_domains || []).join(", ");
+  var em = document.createElement("input");
+  em.id = id + "emails";
+  em.placeholder = "dean@unt.edu";
+  em.value = (a.allowed_emails || []).join(", ");
+  var r1 = document.createElement("div");
+  r1.className = "row";
+  r1.append(field("Access", sel), field("Allowed email domains", dom), field("Allowed people", em));
+  var save = document.createElement("button");
+  save.type = "button";
+  save.className = "primary";
+  save.textContent = "Save access";
+  var msg = document.createElement("span");
+  msg.className = "small";
+  save.onclick = async function () {
+    msg.textContent = "";
+    try {
+      var res = await fetch("/bots/" + encodeURIComponent(bot.id) + "/access", {
+        method: "PATCH",
+        headers: ownerHeaders(bot, { "Content-Type": "application/json" }),
+        body: JSON.stringify(readAccess(id))
+      });
+      var d = await res.json();
+      if (!res.ok) { msg.className = "small bad"; msg.textContent = typeof d.detail === "string" ? d.detail : "Could not save."; return; }
+      refreshBots();
+    } catch (e) { msg.className = "small bad"; msg.textContent = "Could not reach the server."; }
+  };
+  var act = document.createElement("div");
+  act.className = "actions";
+  act.style.marginTop = "12px";
+  act.append(save, msg);
+  box.append(r1, act);
+  row.append(box);
+}
+
+async function refreshBots() {
+  await skyReady;
+  var box = $("bots");
+  var list = [];
+  var seen = {};
+  if (SKY.me.user) {
+    $("bots_note").textContent = "Bots owned by " + SKY.me.user.email + ", plus any deployed from this browser. Other companies can't see them.";
+    try {
+      var res = await fetch("/my/bots");
+      if (res.ok) {
+        (await res.json()).forEach(function (b) { seen[b.id] = true; list.push(b); });
+      }
+    } catch (e) {}
+  }
+  var mine = myBots();
+  var alive = [];
+  for (var i = 0; i < mine.length; i++) {
+    var b = mine[i];
+    if (seen[b.id]) { alive.push(b); list.forEach(function (x) { if (x.id === b.id) x.key = b.key; }); continue; }
+    try {
+      var r = await fetch("/bots/" + encodeURIComponent(b.id) + "/usage", { headers: ownerHeaders(b) });
+      if (r.status === 404) continue;  // removed, or wiped by a restart
+      alive.push(b);
+      if (r.ok) {
+        var u = await r.json();
+        list.push({ id: b.id, name: b.name, company: b.company, key: b.key, access: u.access, requests: u.requests, saved_percent: u.saved_percent });
+      } else {
+        list.push({ id: b.id, name: b.name, company: b.company, key: b.key });
+      }
+    } catch (e) { alive.push(b); }
+  }
+  if (alive.length !== mine.length) saveMyBots(alive);
+
+  box.replaceChildren();
+  if (!list.length) {
+    box.textContent = "No bots yet. Fill in the form and press Deploy bot.";
+    return;
+  }
+  list.forEach(function (bot) {
+    var row = document.createElement("div");
+    row.className = "botrow";
+    var left = document.createElement("div");
+    var name = document.createElement("b");
+    name.textContent = bot.name;
+    var sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = bot.company + "  /chat/" + bot.id + (bot.requests !== undefined ? "  |  " + bot.requests + " questions, " + bot.saved_percent + "% saved" : "");
+    var meta = document.createElement("div");
+    meta.className = "meta";
+    var chipEl = document.createElement("span");
+    chipEl.className = "chip" + (bot.access && bot.access.mode === "google" ? " strong" : "");
+    chipEl.textContent = accessLabel(bot.access);
+    meta.append(chipEl);
+    left.append(name, sub, meta);
+    var right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.gap = "8px";
+    right.style.flexWrap = "wrap";
+    var a = document.createElement("a");
+    a.className = "btn";
+    a.href = "/chat/" + encodeURIComponent(bot.id);
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = "Open chat";
+    var acc = document.createElement("button");
+    acc.type = "button";
+    acc.textContent = "Access";
+    acc.onclick = function () { accessEditor(bot, row); };
+    var del = document.createElement("button");
+    del.type = "button";
+    del.className = "quiet";
+    del.textContent = "Delete";
+    del.setAttribute("aria-label", "Delete " + bot.name);
+    del.onclick = function () { deleteMine(bot); };
+    right.append(a, acc, del);
+    row.append(left, right);
+    box.append(row);
+  });
 }
 
 function showResult(data) {
+  var mine = myBots();
+  mine.push({ id: data.bot_id, name: data.name, company: data.company, key: data.owner_key });
+  saveMyBots(mine);
   renderPlan(data.plan);
   $("p_state").textContent = "deployed";
-  $("r_summary").textContent = data.name + " is answering from " + data.chunks + " document sections. Share this link with your users.";
+  $("r_summary").textContent = data.name + " is answering from " + data.chunks + " document sections. " + accessLabel(data.access) + ". " + (data.owner_email ? "Saved to " + data.owner_email + "." : "Only this browser can manage or delete it.");
   var list = $("r_notes");
   list.replaceChildren();
   data.notes.forEach(function (n) {
@@ -707,6 +982,7 @@ $("deploy").onclick = async function () {
   if (!$("knowledge").value.trim()) { $("error").textContent = "Add some documents so the bot has something to answer from."; $("knowledge").focus(); return; }
   $("result").hidden = true;
   var body = spec();
+  body.access = readAccess("access_");
   body.bot_name = $("bot_name").value;
   body.company = $("company").value;
   body.knowledge = $("knowledge").value;
@@ -715,10 +991,11 @@ $("deploy").onclick = async function () {
   try {
     var res = await fetch("/bots", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: skyHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body)
     });
     var data = await res.json();
+    if (res.status === 401) { showLoginNote(); }
     if (!res.ok) {
       $("error").textContent = typeof data.detail === "string" ? data.detail : "Check the fields: users must be a number above 0 and documents can't be empty.";
     } else {
@@ -732,12 +1009,25 @@ $("deploy").onclick = async function () {
   $("deploy").textContent = "Deploy bot";
 };
 
+function showLoginNote() {
+  $("loginNote").hidden = false;
+  skyRenderButton($("loginBtn"), "continue_with");
+}
+$("access_mode").onchange = function () { $("access_more").hidden = $("access_mode").value !== "google"; };
+skyReady.then(function (me) {
+  if (!me.google_enabled) {
+    $("access_mode").querySelector('option[value="google"]').disabled = true;
+    $("access_note").textContent = "Google sign-in isn't set up on this server, so bots are public. Set GOOGLE_CLIENT_ID to turn it on.";
+  }
+  if (me.login_required_to_deploy && !me.user) showLoginNote();
+});
+
 loadExamples();
 refreshBots();
 schedulePlan(0);
 """
 
-DEPLOY_HTML = _shell("Deploy your AI helper | SkyMind", DEPLOY_BODY, DEPLOY_JS, DEPLOY_CSS)
+DEPLOY_HTML = _shell("Deploy your AI helper | SkyMind", DEPLOY_BODY, AUTH_JS + DEPLOY_JS, DEPLOY_CSS)
 
 
 # ------------------------------------------------------------------ chat (page 2: end users)
@@ -775,6 +1065,10 @@ body { background: var(--bg); }
 .powered .logo { width: 14px; height: 14px; }
 .powered a { color: var(--muted); }
 .tierkey { text-align: center; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.top .authbox .em { display: none; }
+.gate { margin: 4px 0 14px; padding: 18px; border: 1px solid var(--zenith); background: var(--zenith-soft); border-radius: 16px; }
+.gate p { margin: 0 0 12px; }
+@media (min-width: 640px) { .top .authbox .em { display: inline; } }
 """
 
 CHAT_BODY = r"""
@@ -785,6 +1079,7 @@ CHAT_BODY = r"""
       <div class="name" id="title">Assistant</div>
       <div class="company"><span class="status" id="status"><i></i><span id="sub">Connecting...</span></span></div>
     </div>
+    <div class="authbox" id="authbox"></div>
     <button id="newchat" type="button">New chat</button>
   </header>
   <div class="log" id="log" aria-live="polite"></div>
@@ -876,11 +1171,16 @@ async function init() {
       return;
     }
     var bot = await res.json();
+    currentBot = bot;
     document.title = bot.name + " | " + bot.company;
     $("title").textContent = bot.name;
     $("sub").textContent = bot.company;
     $("avatar").textContent = (bot.name || "?").trim().charAt(0).toUpperCase();
     greeting = bot.greeting;
+    var me = await skyReady;
+    var restricted = bot.access && bot.access.mode === "google";
+    if (!restricted && !me.user) { $("authbox").hidden = true; }
+    if (restricted && !me.user) { showGate(bot); return; }
     addMessage(greeting, "bot", null);
     $("msg").focus();
   } catch (e) {
@@ -888,6 +1188,24 @@ async function init() {
     $("status").querySelector("i").style.background = "var(--bad)";
   }
 }
+
+function showGate(bot) {
+  var a = bot.access || {};
+  var who = (a.allowed_domains || []).map(function (d) { return "@" + d; }).join(", ");
+  var g = document.createElement("div");
+  g.className = "gate";
+  var p = document.createElement("p");
+  p.textContent = bot.company + "'s assistant is only for signed-in " + (who ? who + " " : "") + "Google accounts" + (a.invite_list ? " and invited people" : "") + ". Sign in to continue.";
+  var holder = document.createElement("div");
+  g.append(p, holder);
+  $("log").replaceChildren(g);
+  $("send").disabled = true;
+  $("msg").disabled = true;
+  $("msg").placeholder = "Sign in to ask a question";
+  if (SKY.me.google_enabled) { skyRenderButton(holder, "signin_with"); }
+  else { holder.textContent = "Sign-in is not available on this server."; }
+}
+var currentBot = null;
 
 async function send() {
   var text = $("msg").value.trim();
@@ -900,11 +1218,12 @@ async function send() {
   try {
     var res = await fetch("/bots/" + encodeURIComponent(botId) + "/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: skyHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ session_id: session, message: text })
     });
     var data = await res.json();
     wait.remove();
+    if (res.status === 401 && currentBot) { busy = false; showGate(currentBot); return; }
     if (!res.ok) {
       addMessage(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.", "bot", null);
     } else {
@@ -930,7 +1249,7 @@ $("newchat").onclick = function () {
 init();
 """
 
-CHAT_HTML = _shell("Chat | SkyMind", CHAT_BODY, CHAT_JS, CHAT_CSS)
+CHAT_HTML = _shell("Chat | SkyMind", CHAT_BODY, AUTH_JS + CHAT_JS, CHAT_CSS)
 
 
 # ------------------------------------------------------------------ admin (page 3: us)
@@ -985,7 +1304,8 @@ ADMIN_BODY = _header("admin") + r"""
 
   <form class="panel signin" id="signin" hidden>
     <h2>Sign in to the admin console</h2>
-    <p class="sub" style="margin:0">Enter the admin token. It is printed in the server window as <b>SkyMind admin token: ...</b> when SkyMind starts, unless you set your own with ADMIN_TOKEN.</p>
+    <p class="sub" style="margin:0">Enter the admin token. It is printed in the server window as <b>SkyMind admin token: ...</b> when SkyMind starts, unless you set your own with ADMIN_TOKEN. Google accounts listed in ADMIN_EMAILS can sign in with Google instead.</p>
+    <div id="adminGoogle" style="margin-top:12px"></div>
     <label for="token">Admin token</label>
     <div class="tokenrow">
       <input id="token" type="password" autocomplete="current-password" required>
@@ -1030,7 +1350,7 @@ try { token = sessionStorage.getItem("sm_admin") || ""; } catch (e) {}
 
 function api(path, opts) {
   opts = opts || {};
-  opts.headers = Object.assign({}, opts.headers || {}, { "X-Admin-Token": token });
+  opts.headers = Object.assign({}, opts.headers || {}, skyHeaders(token ? { "X-Admin-Token": token } : {}));
   return fetch(path, opts).then(function (res) {
     if (res.status === 401) { showSignin("That token was not accepted."); throw new Error("unauthorized"); }
     return res;
@@ -1045,6 +1365,10 @@ function showSignin(msg) {
   $("signout").hidden = true;
   $("live").className = "live";
   $("status").textContent = "Signed out";
+  skyReady.then(function (me) {
+    if (me.google_enabled && !me.user) skyRenderButton($("adminGoogle"), "signin_with");
+    else if (me.user && !me.is_admin) $("adminGoogle").textContent = me.user.email + " is not an admin account.";
+  });
   $("token").focus();
 }
 function showConsole() {
@@ -1140,7 +1464,7 @@ async function refresh(once) {
       strong.textContent = b.name;
       var sub = document.createElement("div");
       sub.className = "sub";
-      sub.textContent = b.company + ", " + b.spec.users + " users, " + b.spec.model + " routing";
+      sub.textContent = b.company + ", " + (b.owner_email || "no account") + ", " + (b.access === "google" ? "Google sign-in" : "public link");
       name.append(strong, sub);
       tr.append(name);
 
@@ -1224,7 +1548,7 @@ $("signout").onclick = function () {
   showSignin("");
 };
 
-if (token) { refresh(); } else { showSignin(""); }
+refresh();  // works with a saved token, or an admin Google account; otherwise shows sign-in
 """
 
-ADMIN_HTML = _shell("Admin console | SkyMind", ADMIN_BODY, ADMIN_JS, ADMIN_CSS)
+ADMIN_HTML = _shell("Admin console | SkyMind", ADMIN_BODY, AUTH_JS + ADMIN_JS, ADMIN_CSS)
