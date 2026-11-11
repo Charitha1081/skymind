@@ -25,19 +25,83 @@ Quick demo:
 2. Open each bot's chat link and ask questions ("How many colleges does UNT have?", "When is the AI Expo?", "What is the return policy?").
 3. Watch **/admin** update live.
 
-### Use a real model
+### Use a real model (Claude)
 
-```
-set LLM_PROVIDER=anthropic
-set ANTHROPIC_API_KEY=your-key-here
-docker compose up --build
+1. At the Claude Console (console.anthropic.com), add a few dollars of credit, **set a monthly spend limit** (e.g. $10) and create an API key.
+2. Locally (Windows):
+   ```
+   set ANTHROPIC_API_KEY=your-key-here
+   docker compose up --build
+   ```
+   On Render: in the service's **Environment** tab add `ANTHROPIC_API_KEY`, and delete `LLM_PROVIDER` if it is there (or set it to `anthropic`). With a key and no `LLM_PROVIDER`, SkyMind uses Claude automatically.
+3. Never put the key in a file or on GitHub.
+
+Easy questions go to Claude Haiku 5.5 ($0.10 / $0.50 per million input/output tokens) and hard ones to Claude Sonnet 5.5 ($2 / $10). A typical answer costs about $0.0001 on Haiku. Reliability: a failed or overloaded call is retried once, and if the strong model is still unavailable the cheap model answers (shown as the route reason). Bad keys fail fast with a plain message; details go only to the server log. `MAX_ANSWER_TOKENS` (512) caps answer length and cost.
+
+Do not run the load test against a real model: it refuses unless you add `--allow-real`, because it would send thousands of paid requests.
+
+## Any AI model (model-agnostic)
+
+Each bot picks its AI provider on the deploy page. Every provider has a cheap and a strong model, so routing works the same everywhere. Providers without a key are shown as "not set up".
+
+| Provider | Easy questions | Hard questions | Price per million tokens (input / output) | Turn it on |
+|---|---|---|---|---|
+| Mock | document text, no AI | document text, no AI | free (costs shown as if Claude) | always on |
+| Claude (Anthropic) | Claude Haiku 5.5 | Claude Sonnet 5.5 | $0.10 / $0.50 and $2 / $10 | `ANTHROPIC_API_KEY` |
+| Gemini (Google) | Gemini 3.1 Flash-Lite | Gemini 3.5 Flash | $0.25 / $1.50 and $1.50 / $9 (both have a free tier) | `GEMINI_API_KEY` from Google AI Studio |
+| Ollama (open source, your own machine) | qwen3.5:0.8b | qwen3.5:4b | free per answer | `OLLAMA_URL`, e.g. `http://host.docker.internal:11434` |
+
+Prices are list prices from November 2026; check each provider's page. Model names can be changed with `CHEAP_MODEL` / `STRONG_MODEL` (Claude), `GEMINI_CHEAP_MODEL` / `GEMINI_STRONG_MODEL`, `OLLAMA_CHEAP_MODEL` / `OLLAMA_STRONG_MODEL`. Every provider gets the same retry and strong-to-cheap fallback, and costs are tracked at that provider's prices.
+
+## Evaluation: measured quality, not guesses
+
+`evals/questions.yaml` holds 53 questions about the two sample companies: 45 with the facts a correct answer must contain, and 8 whose answer is *not* in the documents (the bot must say so). `evaluate.py` grades:
+
+- **search**: does each search method find the right section, and find nothing for off-topic questions?
+- **routing**: does the router send hard questions to the strong model?
+- **answers**: ask a running SkyMind every question with each provider and routing setting; report accuracy, correct refusals, speed and cost, then name the cheapest setup that passes the quality bar.
+
+```bash
+docker compose up --build                                   # one window
+docker compose run --rm evaluate search routing             # free, instant
+docker compose run --rm evaluate answers --providers mock,gemini,anthropic --routing cheap,strong,auto
+docker compose run --rm evaluate answers --providers gemini --pace 5 --show   # free tier: go slower, print every answer
 ```
 
-(Windows command prompt. On Mac/Linux use `export` instead of `set`.) Never put the key in a file or on GitHub.
+### Measured results (November 2026)
+
+Search, 46 questions with a section to find and 7 that should find nothing:
+
+| Method | Right section first | Right section in top 3 | Finds nothing when it should |
+|---|---|---|---|
+| keyword (IDF overlap) | 96% | 100% | 29% |
+| **bm25** (default) | 93% | 93% | 86% |
+
+BM25 refuses off-topic questions three times as often, at the cost of two misses where the question uses a different word than the documents ("city" vs "Denton", "phone number" vs "call"). Embeddings would close that gap (roadmap).
+
+Routing: the router agrees with the easy/hard labels on **96%** of 45 questions (93% before the evaluation exposed "meal *plan*" being treated as a hard question; fixed). The two remaining misses are multi-part questions without a reasoning keyword.
+
+Answers, mock provider (no AI, extractive baseline):
+
+| Setup | Accuracy | Refusals | Overall |
+|---|---|---|---|
+| mock / keyword search | 93% | 38% | 85% |
+| mock / bm25 search | 91% | 88% | 91% |
+
+Add your real-model rows by running `evaluate answers` with Claude and/or Gemini.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python tests/run_all.py
+```
+
+Three suites with no network or paid calls: the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
 
 ## What happens when a question arrives
 
-1. **Retrieve:** find the sections of that company's documents that best match the question.
+1. **Retrieve:** find the sections of that company's documents that best match the question (BM25 by default).
 2. **Route:** easy questions go to the cheap model, hard ones (long, code, several questions, "explain", "compare", "why") to the strong model.
 3. **Budget guard:** once a bot has used its monthly LLM budget, the strong model is paused and everything goes to the cheap model.
 4. **Answer** from the retrieved sections only. If the answer is not in the documents, the bot says so.
@@ -142,6 +206,7 @@ The server and the load tester share one machine, so treat the numbers as a lowe
 | `DELETE /admin/stats` | Reset usage counters |
 | `POST /plan` | Capacity and cost plan for a spec |
 | `GET /examples` | Sample customers (UNT Helper, Acme Support) |
+| `GET /providers` | AI providers this server can use, their models and prices |
 | `GET /health` | Health check |
 
 Interactive docs: http://localhost:8000/docs
@@ -150,9 +215,11 @@ Interactive docs: http://localhost:8000/docs
 
 | Variable | Default | Meaning |
 |---|---|---|
-| LLM_PROVIDER | mock | `mock` or `anthropic` |
-| CHEAP_MODEL | claude-haiku-5-5 | Model for easy questions |
-| STRONG_MODEL | claude-sonnet-5-5 | Model for hard questions |
+| LLM_PROVIDER | auto | Default provider for new bots: Claude if ANTHROPIC_API_KEY is set, else Gemini if GEMINI_API_KEY is set, else mock |
+| ANTHROPIC_API_KEY, GEMINI_API_KEY, OLLAMA_URL | (empty) | Turn on Claude, Gemini, Ollama |
+| CHEAP_MODEL / STRONG_MODEL | claude-haiku-5-5 / claude-sonnet-5-5 | Claude models (Gemini and Ollama have their own, see "Any AI model") |
+| SEARCH_METHOD | bm25 | Default search for new bots: `bm25` or `keyword` |
+| MAX_ANSWER_TOKENS | 512 | Longest answer, caps cost |
 | MEMORY_WINDOW | 10 | Recent exchanges kept per conversation |
 | MEMORY_TTL_SECONDS | 3600 | Conversation memory expiry |
 | WORKERS | 1 | Server processes inside the container |
@@ -171,13 +238,14 @@ Interactive docs: http://localhost:8000/docs
 
 ## Files
 
-`main.py` (service and API), `auth.py` (Google sign-in, sessions, bot access rules), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
+`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `evals/questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
 ## Honest limits
 
 - "Deploy" currently creates an isolated bot (own documents, memory, routing, budget and stats) inside one running service. Giving each customer a separate Kubernetes deployment with autoscaling is the next step.
 - Memory types `summary` and `long_term` are planned. Today every bot keeps the recent messages of each conversation.
-- Document retrieval uses keyword matching. Embeddings in pgvector are planned.
+- Search is lexical (BM25 or keyword), so a question using different words than the documents can miss; embeddings are planned.
+- Answers are graded by required facts, which is strict and explainable but can mark a correct paraphrase as wrong (e.g. "fourteen" vs "14"). Check misses with `--show`.
 - Accounts are individual Google sign-ins. Teams (several people managing one company's bots) are not built yet.
 - The deploy page is open to anyone who can reach the server, limited by MAX_BOTS. Keep BIND_ADDRESS at 127.0.0.1 unless you need others to connect.
 - Costs are estimates from placeholder prices until calibrated.
@@ -206,6 +274,7 @@ Load testing reads the admin token automatically (from ADMIN_TOKEN or Redis). Fo
 3. Model routing, cheap vs strong, with savings tracking (done)
 4. Multi-customer platform: deploy page, end-user chat page, admin console (done)
 5. Load test tool (done). Next: run it at 100 / 500 / 1,000 users and record the real numbers above
-6. Long-term memory with pgvector and embeddings
-7. Per-customer Kubernetes deployment with autoscaling
-8. Teams and roles for companies (Google sign-in and per-bot access are done)
+6. Evaluation set and model-agnostic providers (done). Next: run it on Claude and Gemini and record the numbers above
+7. Embedding search and long-term memory with pgvector, measured with the same evaluation set
+8. Per-customer Kubernetes deployment with autoscaling
+9. Teams and roles for companies (Google sign-in and per-bot access are done)

@@ -16,7 +16,7 @@ services:
       - "${BIND_ADDRESS:-127.0.0.1}:8000:8000"
     environment:
       REDIS_URL: redis://redis:6379/0
-      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}      # empty = Claude if ANTHROPIC_API_KEY is set, else mock
       CHEAP_MODEL: ${CHEAP_MODEL:-claude-haiku-5-5}
       STRONG_MODEL: ${STRONG_MODEL:-claude-sonnet-5-5}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -26,7 +26,11 @@ services:
       CHAT_LIMIT_PER_SESSION: ${CHAT_LIMIT_PER_SESSION:-60}
       CHAT_LIMIT_PER_IP: ${CHAT_LIMIT_PER_IP:-0}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}          # e.g. http://host.docker.internal:11434 for Ollama on this computer
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach Ollama on this computer
     security_opt:
       - no-new-privileges:true
     depends_on:
@@ -45,3 +49,17 @@ services:
       - chatbot
     entrypoint: ["python", "loadtest.py"]
     command: ["--sweep"]
+
+  # Quality evaluation. Not started with the app; run it on demand, e.g.:
+  #   docker compose run --rm evaluate search routing
+  #   docker compose run --rm evaluate answers --providers mock,gemini
+  evaluate:
+    build: .
+    profiles: ["evaluate"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+    depends_on:
+      - chatbot
+    entrypoint: ["python", "evaluate.py"]
+    command: ["search", "routing"]

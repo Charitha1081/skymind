@@ -548,6 +548,9 @@ DEPLOY_BODY = _header("deploy") + r"""
               <option value="long_term">Long-term (planned)</option>
               <option value="summary + long_term">Summary and long-term (planned)</option>
             </select></div>
+          <div><label for="provider">AI provider</label>
+            <select id="provider"><option value="">Loading...</option></select>
+            <div class="hint" id="provider_hint"></div></div>
           <div><label for="model">Model routing</label>
             <select id="model">
               <option value="auto">Auto: cheap for easy, strong for hard</option>
@@ -650,8 +653,10 @@ function money(x) {
 function updateCount() {
   $("count").textContent = $("knowledge").value.length.toLocaleString() + " characters";
 }
+var providerInfo = {};
 function spec() {
   return {
+    provider: $("provider").value || undefined,
     expected_concurrent_users: Number($("users").value),
     latency_target_p95: $("latency").value,
     memory: $("memory").value,
@@ -668,6 +673,7 @@ function fill(ex) {
   $("model").value = ex.model;
   $("budget").value = ex.monthly_budget;
   $("knowledge").value = ex.knowledge;
+  if (ex.provider) { $("provider").value = ex.provider; }
   updateCount();
   schedulePlan(0);
 }
@@ -739,6 +745,33 @@ async function refreshPlan() {
     if (seq === planSeq) { $("p_state").textContent = "offline"; }
   }
 }
+
+function providerHint() {
+  var p = providerInfo[$("provider").value];
+  if (!p) { $("provider_hint").textContent = ""; return; }
+  var free = p.cheap_price[0] === 0 && p.strong_price[0] === 0;
+  $("provider_hint").textContent = "Easy questions: " + p.cheap_model + ". Hard: " + p.strong_model + "." +
+    (free ? " No per-answer cost." : " $" + p.cheap_price[0] + " / $" + p.strong_price[0] + " per million input tokens.");
+}
+async function loadProviders() {
+  try {
+    var d = await (await fetch("/providers")).json();
+    var sel = $("provider");
+    sel.replaceChildren();
+    d.providers.forEach(function (p) {
+      providerInfo[p.name] = p;
+      var o = document.createElement("option");
+      o.value = p.name;
+      o.textContent = p.label + (p.available ? "" : " (not set up)");
+      o.disabled = !p.available;
+      sel.append(o);
+    });
+    sel.value = d.default;
+    providerHint();
+    schedulePlan(0);
+  } catch (e) { $("provider_hint").textContent = "Could not load providers."; }
+}
+$("provider").addEventListener("change", function () { providerHint(); schedulePlan(0); });
 
 async function loadExamples() {
   var box = $("examples");
@@ -1022,6 +1055,7 @@ skyReady.then(function (me) {
   if (me.login_required_to_deploy && !me.user) showLoginNote();
 });
 
+loadProviders();
 loadExamples();
 refreshBots();
 schedulePlan(0);
@@ -1464,7 +1498,7 @@ async function refresh(once) {
       strong.textContent = b.name;
       var sub = document.createElement("div");
       sub.className = "sub";
-      sub.textContent = b.company + ", " + (b.owner_email || "no account") + ", " + (b.access === "google" ? "Google sign-in" : "public link");
+      sub.textContent = b.company + ", " + (b.spec.provider || "anthropic") + ", " + (b.owner_email || "no account") + ", " + (b.access === "google" ? "Google sign-in" : "public link");
       name.append(strong, sub);
       tr.append(name);
 

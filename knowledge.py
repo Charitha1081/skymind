@@ -1,10 +1,16 @@
 """Tiny knowledge retrieval for SkyMind bots (no outside services needed).
 
-A company's documents are split into chunks. For each question we find the chunks
-that share the most meaningful words with it, and the bot answers from those.
+A company's documents are split into chunks. For each question we rank the chunks and
+the bot answers from the best ones. Two ranking methods, compared by evaluate.py:
+
+  keyword  shared meaningful words, rarer words count more (IDF), title matches count double
+  bm25     Okapi BM25, the classic search-engine formula: also counts how often a word appears,
+           with diminishing returns, and normalises for chunk length
+
 Later this can be swapped for embeddings stored in pgvector without changing the
 rest of the service.
 """
+from collections import Counter
 import difflib
 import math
 import re
@@ -86,6 +92,12 @@ def make_chunks(text: str, max_chars: int = 900) -> list[dict]:
     return chunks
 
 
+SEARCH_METHODS = ("keyword", "bm25")
+BM25_K1 = 1.2   # how quickly repeated words stop adding score
+BM25_B = 0.75   # how strongly long chunks are penalised
+BM25_MIN_SCORE = 2.5  # below this, nothing in the documents is relevant (tuned with evaluate.py)
+
+
 def build_index(chunks: list[dict]) -> dict:
     tokens = [set(tokenize(c["title"] + " " + c["text"])) for c in chunks]
     titles = [set(tokenize(c["title"])) for c in chunks]
@@ -93,11 +105,32 @@ def build_index(chunks: list[dict]) -> dict:
     for s in tokens:
         for t in s:
             df[t] = df.get(t, 0) + 1
-    return {"tokens": tokens, "titles": titles, "df": df, "n": len(chunks)}
+    # BM25: term counts per chunk (title words counted twice so headings matter), chunk lengths
+    tf = [Counter(tokenize(c["title"]) * 2 + tokenize(c["text"])) for c in chunks]
+    lengths = [sum(c.values()) for c in tf]
+    avgdl = (sum(lengths) / len(lengths)) if lengths else 1.0
+    return {"tokens": tokens, "titles": titles, "df": df, "n": len(chunks), "tf": tf, "len": lengths, "avgdl": avgdl}
 
 
-def retrieve(index: dict, chunks: list[dict], question: str, k: int = 3, min_score: float = 1.0) -> list[dict]:
-    """Return up to k chunks that best match the question (rare shared words count more)."""
+def _bm25_scores(index: dict, query: set) -> list[float]:
+    n = index["n"]
+    scores = []
+    for tf, dl in zip(index["tf"], index["len"]):
+        s = 0.0
+        for t in query:
+            f = tf.get(t, 0)
+            if not f:
+                continue
+            df = index["df"][t]
+            idf = math.log(1 + (n - df + 0.5) / (df + 0.5))
+            s += idf * f * (BM25_K1 + 1) / (f + BM25_K1 * (1 - BM25_B + BM25_B * dl / index["avgdl"]))
+        scores.append(s)
+    return scores
+
+
+def retrieve(index: dict, chunks: list[dict], question: str, k: int = 3, min_score: float | None = None,
+             method: str = "keyword") -> list[dict]:
+    """Return up to k chunks that best match the question, ranked by the chosen method."""
     query = set()
     vocab = list(index["df"])
     for t in tokenize(question):
@@ -109,6 +142,11 @@ def retrieve(index: dict, chunks: list[dict], question: str, k: int = 3, min_sco
         query.add(t)
     if not query or not chunks:
         return []
+    if method == "bm25" and "tf" in index:
+        floor = BM25_MIN_SCORE if min_score is None else min_score
+        ranked = sorted(((s, i) for i, s in enumerate(_bm25_scores(index, query)) if s >= floor), reverse=True)
+        return [dict(chunks[i], score=round(s, 2)) for s, i in ranked[:k]]
+    min_score = 1.0 if min_score is None else min_score
     n = index["n"]
     scored = []
     for i, (tok, tit) in enumerate(zip(index["tokens"], index["titles"])):

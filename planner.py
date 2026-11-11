@@ -3,13 +3,15 @@
 Turns a simple spec (users, latency, memory, model, budget) into a plan:
 replica count, a latency check, and an estimated monthly cost.
 
-IMPORTANT: every number in ASSUMPTIONS and MODELS is a placeholder estimate.
-Replace them with values measured in your load tests and with your LLM
-provider's real prices before you quote any result as fact.
+IMPORTANT: model prices in MODELS are Claude Haiku 5.5 / Sonnet 5.5 list prices (Nov 2026).
+Traffic numbers in ASSUMPTIONS and model latencies are still placeholder estimates:
+replace them with values measured in your load tests before quoting results as fact.
 
 Run from the command line:   python planner.py spec.yaml
 """
 import math
+
+import providers
 import re
 import sys
 
@@ -31,10 +33,11 @@ ASSUMPTIONS = {
     "overhead_s": 0.15,                 # time spent outside the LLM call
 }
 
-# Placeholder model tiers: $ per million tokens, average and p95 latency in seconds.
+# Model tiers: average and p95 latency in seconds (placeholders: replace with measurements).
+# Prices per provider live in providers.py; the price fields here are the Claude defaults.
 MODELS = {
-    "cheap": {"input_per_m": 0.25, "output_per_m": 1.25, "avg_s": 0.6, "p95_s": 1.2},
-    "strong": {"input_per_m": 3.00, "output_per_m": 15.00, "avg_s": 2.0, "p95_s": 3.5},
+    "cheap": {"input_per_m": 0.10, "output_per_m": 0.50, "avg_s": 0.6, "p95_s": 1.2},
+    "strong": {"input_per_m": 2.00, "output_per_m": 10.00, "avg_s": 2.0, "p95_s": 3.5},
 }
 
 # Extra prompt tokens each memory type adds per request.
@@ -87,8 +90,13 @@ def parse_spec(raw: dict) -> dict:
     if model not in ("auto", "cheap", "strong"):
         raise ValueError("model must be auto, cheap or strong")
 
+    provider = str(raw.get("provider") or providers.default_provider()).strip().lower()
+    if provider not in providers.PROVIDERS:
+        raise ValueError(f"provider must be one of: {', '.join(providers.PROVIDERS)}")
+
     return {
         "users": users,
+        "provider": provider,
         "latency_target_s": parse_duration(raw.get("latency_target_p95", "2s")),
         "memory": memory,
         "model": model,
@@ -96,9 +104,9 @@ def parse_spec(raw: dict) -> dict:
     }
 
 
-def _request_cost(model_name: str, in_tokens: int, out_tokens: int) -> float:
-    m = MODELS[model_name]
-    return in_tokens / 1e6 * m["input_per_m"] + out_tokens / 1e6 * m["output_per_m"]
+def _request_cost(tier: str, in_tokens: int, out_tokens: int, provider: str = "anthropic") -> float:
+    p_in, p_out = providers.price(provider, tier)
+    return in_tokens / 1e6 * p_in + out_tokens / 1e6 * p_out
 
 
 def plan(spec: dict) -> dict:
@@ -120,8 +128,9 @@ def plan(spec: dict) -> dict:
     # Cost per request and per month.
     in_tokens = a["avg_input_tokens"] + sum(MEMORY_EXTRA_INPUT_TOKENS[m] for m in spec["memory"])
     out_tokens = a["avg_output_tokens"]
-    cheap_cost = _request_cost("cheap", in_tokens, out_tokens)
-    strong_cost = _request_cost("strong", in_tokens, out_tokens)
+    prov = spec.get("provider", "anthropic")
+    cheap_cost = _request_cost("cheap", in_tokens, out_tokens, prov)
+    strong_cost = _request_cost("strong", in_tokens, out_tokens, prov)
     cost_per_request = (1 - share) * cheap_cost + share * strong_cost
     monthly_requests = peak_rps * SECONDS_PER_MONTH * a["duty_cycle"]
 

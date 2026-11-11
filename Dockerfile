@@ -7,6 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY *.py ./
+COPY evals ./evals
 
 # Run as an ordinary user, not root.
 RUN useradd --create-home --uid 10001 skymind

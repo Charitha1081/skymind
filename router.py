@@ -11,7 +11,7 @@ import difflib
 import math
 import re
 
-import planner
+import providers
 
 HARD_KEYWORDS = (
     "why",
@@ -30,7 +30,9 @@ HARD_KEYWORDS = (
     "tradeoff",
     "optimize",
     "optimise",
-    "plan",
+    "make a plan",  # plain "plan" sent "meal plan prices" to the strong model (found by evaluate.py)
+    "create a plan",
+    "plan for",
     "summarize",
     "summarise",
 )
@@ -123,10 +125,10 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def request_cost(tier: str, input_tokens: int, output_tokens: int) -> float:
-    """Dollar cost of one request. Prices come from planner.MODELS (placeholders: edit them there)."""
-    m = planner.MODELS[tier]
-    return input_tokens / 1e6 * m["input_per_m"] + output_tokens / 1e6 * m["output_per_m"]
+def request_cost(tier: str, input_tokens: int, output_tokens: int, provider: str = "anthropic") -> float:
+    """Dollar cost of one request at the provider's list price (providers.py)."""
+    p_in, p_out = providers.price(provider, tier)
+    return input_tokens / 1e6 * p_in + output_tokens / 1e6 * p_out
 
 
 def summarize(raw: dict) -> dict:

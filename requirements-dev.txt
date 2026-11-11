@@ -1,0 +1,2 @@
+-r requirements.txt
+fakeredis>=2.20,<3.0   # in-memory Redis for tests

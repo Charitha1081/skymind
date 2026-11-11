@@ -1,0 +1,66 @@
+# SkyMind evaluation set.
+# Each question is graded automatically:
+#   must:    every item must appear in the answer (case-insensitive). "a|b" means a OR b.
+#            Commas inside numbers are ignored, so 43,567 matches 43567.
+#   refuse:  the answer is NOT in the documents; a correct answer says so instead of inventing one.
+#   section: the document section that holds the answer (used to grade search). A refuse question
+#            may also name the section that tells the bot not to answer (e.g. tuition amounts).
+#   level:   easy or hard (used to grade routing: hard questions should go to the strong model).
+# Add your own questions the same way; more questions = more trustworthy numbers.
+
+# ------------------------------------------------------------------ UNT Helper
+- {bot: unt, level: easy, section: Colleges and schools, q: "How many colleges and schools does UNT have?", must: ["14"]}
+- {bot: unt, level: easy, section: About UNT, q: "Which city is UNT in?", must: ["denton"]}
+- {bot: unt, level: easy, section: About UNT, q: "What year was UNT founded?", must: ["1890"]}
+- {bot: unt, level: easy, section: About UNT, q: "What is UNT's research classification?", must: ["r1"]}
+- {bot: unt, level: easy, section: Size and enrollment, q: "How many students were enrolled at UNT in fall 2025?", must: ["43,567"]}
+- {bot: unt, level: easy, section: Size and enrollment, q: "How many graduate students does UNT have?", must: ["9,418"]}
+- {bot: unt, level: easy, section: Size and enrollment, q: "How many degree programs does UNT offer?", must: ["243"]}
+- {bot: unt, level: easy, section: Size and enrollment, q: "How many doctoral programs are there?", must: ["39"]}
+- {bot: unt, level: easy, section: Size and enrollment, q: "How many full-time faculty does UNT have?", must: ["1,344"]}
+- {bot: unt, level: easy, section: Colleges and schools, q: "What is the name of UNT's business college?", must: ["brint ryan"]}
+- {bot: unt, level: easy, section: Colleges and schools, q: "Does UNT have a journalism school?", must: ["mayborn"]}
+- {bot: unt, level: easy, section: How to apply as a first-year (freshman) student, q: "What is the application fee for international freshman applicants?", must: ["85"]}
+- {bot: unt, level: easy, section: How to apply as a first-year (freshman) student, q: "Are SAT or ACT scores required?", must: ["optional"]}
+- {bot: unt, level: easy, section: How to apply as a first-year (freshman) student, q: "What is UNT's SAT score code?", must: ["6481"]}
+- {bot: unt, level: easy, section: How to apply as a first-year (freshman) student, q: "Which applications can freshmen use to apply?", must: ["applytexas|apply texas", "common app"]}
+- {bot: unt, level: easy, section: How to apply as a first-year (freshman) student, q: "Is there a fixed freshman application deadline?", must: ["rolling"]}
+- {bot: unt, level: easy, section: Housing, q: "How many residence halls are there?", must: ["15"]}
+- {bot: unt, level: easy, section: Dining, q: "What is the largest dining hall?", must: ["eagle landing"]}
+- {bot: unt, level: easy, section: Dining, q: "Which dining hall is free of the Big 8 allergens?", must: ["kitchen west"]}
+- {bot: unt, level: easy, section: Dining, q: "Where can I find meal plan prices?", must: ["dining.unt.edu"]}
+- {bot: unt, level: easy, section: Tutoring and libraries, q: "Where can I get free tutoring?", must: ["willis"]}
+- {bot: unt, level: easy, section: "AI Expo by SSAI, November 16, 2026", q: "When is the AI Expo?", must: ["november 16|nov 16|nov. 16"]}
+- {bot: unt, level: easy, section: "AI Expo by SSAI, November 16, 2026", q: "Where is the AI Expo held?", must: ["emerald ballroom"]}
+- {bot: unt, level: easy, section: "AI Expo by SSAI, November 16, 2026", q: "What is the first place prize at the AI Expo?", must: ["200"]}
+- {bot: unt, level: hard, section: How to apply as a first-year (freshman) student, q: "Explain the steps a first-year student follows to apply to UNT, and what to do after applying.", must: ["applytexas|apply texas|common app", "myunt"]}
+- {bot: unt, level: hard, section: How to apply as a first-year (freshman) student, q: "Compare the application fee for U.S. applicants and international applicants.", must: ["75", "85"]}
+- {bot: unt, level: hard, section: How to apply as a first-year (freshman) student, q: "Why might an applicant be admitted without SAT or ACT scores?", must: ["3.0"]}
+- {bot: unt, level: hard, section: "AI Expo by SSAI, November 16, 2026", q: "I'm presenting at the AI Expo and want to win. What are the prizes, and can I use slides?", must: ["200", "slide"]}
+- {bot: unt, refuse: true, level: easy, section: Financial aid and tuition, q: "How much is out-of-state tuition per semester?"}
+- {bot: unt, refuse: true, level: easy, q: "What is the capital of France?"}
+- {bot: unt, refuse: true, level: easy, q: "What will the weather be in Denton tomorrow?"}
+- {bot: unt, refuse: true, level: easy, q: "Who is the head coach of the UNT football team?"}
+
+# ------------------------------------------------------------------ Acme Support
+- {bot: acme, level: easy, section: Shipping, q: "When is shipping free?", must: ["50"]}
+- {bot: acme, level: easy, section: Shipping, q: "How long does standard shipping take?", must: ["3 to 5|3-5|3–5|three to five"]}
+- {bot: acme, level: easy, section: Shipping, q: "How much does express shipping cost?", must: ["15"]}
+- {bot: acme, level: easy, section: Returns and refunds, q: "How many days do I have to return an item?", must: ["30"]}
+- {bot: acme, level: easy, section: Returns and refunds, q: "How long does a refund take?", must: ["5 to 7|5-7|5–7|five to seven"]}
+- {bot: acme, level: easy, section: Returns and refunds, q: "Can sale items be refunded?", must: ["exchang"]}
+- {bot: acme, level: easy, section: Warranty, q: "How long is the warranty on backpacks?", must: ["1-year|1 year|one year|one-year"]}
+- {bot: acme, level: easy, section: Store hours and locations, q: "What time does the Denver store open on Sunday?", must: ["11"]}
+- {bot: acme, level: easy, section: Store hours and locations, q: "Is the Austin store open on Sunday?", must: ["closed"]}
+- {bot: acme, level: easy, section: Contact support, q: "What is the support phone number?", must: ["555-0100"]}
+- {bot: acme, level: easy, section: Contact support, q: "What is the support email address?", must: ["support@acme.example"]}
+- {bot: acme, level: easy, section: Gift cards and promotions, q: "Do gift cards expire?", must: ["never|do not expire|don't expire|doesn't expire|no expiration"]}
+- {bot: acme, level: easy, section: Gift cards and promotions, q: "Can I use two promo codes on one order?", must: ["cannot|can't|can not|not be combined|only one|one promo"]}
+- {bot: acme, level: hard, section: Shipping, q: "Explain the difference between standard and express shipping.", must: ["3 to 5|3-5|3–5|three to five", "1 to 2|1-2|1–2|one to two"]}
+- {bot: acme, level: hard, section: Store hours and locations, q: "Compare the Denver and Austin store hours on Sundays.", must: ["11", "closed"]}
+- {bot: acme, level: hard, section: Returns and refunds, q: "Why can't I get my money back for a sale item, and what can I do instead?", must: ["exchang"]}
+- {bot: acme, level: hard, section: Shipping, q: "If I order a $40 tent on a Tuesday at 1 PM with express shipping, how much is shipping and when will it ship?", must: ["15", "same day"]}
+- {bot: acme, refuse: true, level: easy, q: "Do you sell kayaks?"}
+- {bot: acme, refuse: true, level: easy, q: "Who is the CEO of Acme Outdoor Gear?"}
+- {bot: acme, refuse: true, level: easy, q: "How many colleges does UNT have?"}
+- {bot: acme, refuse: true, level: easy, q: "Can you recommend a good hiking trail near Denver?"}

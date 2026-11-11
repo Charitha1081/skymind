@@ -10,7 +10,7 @@ Behind them:
   - /plan turns a spec into a capacity and cost estimate (planner.py)
   - cheap questions go to a cheap model, hard ones to a strong model (router.py)
 
-LLM_PROVIDER=mock works with no API key; LLM_PROVIDER=anthropic calls the real API.
+Model-agnostic: each bot picks a provider (mock, Claude, Gemini or Ollama; see providers.py).
 
 Security (see README, "Security"):
   - admin endpoints (/admin/overview, reset, delete bot) need the admin token
@@ -18,6 +18,7 @@ Security (see README, "Security"):
   - a hard spending stop on top of the budget guard
   - request size limit, input validation, security headers, prompt-injection guard
 """
+import asyncio
 import hashlib
 import hmac
 import json
@@ -40,13 +41,15 @@ import examples
 import knowledge
 import pages
 import planner
+import providers
 import router
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mock")  # mock | anthropic
-CHEAP_MODEL = os.getenv("CHEAP_MODEL", "claude-haiku-5-5")
-STRONG_MODEL = os.getenv("STRONG_MODEL", "claude-sonnet-5-5")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+# Default provider for new bots: LLM_PROVIDER if set, else the first one with a key (Claude, Gemini), else mock.
+LLM_PROVIDER = providers.default_provider()
+SEARCH_METHOD = os.getenv("SEARCH_METHOD", "bm25").strip().lower()  # default search for new bots (keyword | bm25)
+MAX_ANSWER_TOKENS = int(os.getenv("MAX_ANSWER_TOKENS", "512"))  # caps cost and length of each answer
+LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "25"))
 MEMORY_WINDOW = int(os.getenv("MEMORY_WINDOW", "10"))  # last N exchanges kept per conversation
 MEMORY_TTL_SECONDS = int(os.getenv("MEMORY_TTL_SECONDS", "3600"))
 MAX_BOTS = int(os.getenv("MAX_BOTS", "50"))
@@ -273,6 +276,11 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         raise HTTPException(422, str(err))
     if access["mode"] == "google" and not auth.google_enabled():
         raise HTTPException(422, "Google sign-in is not set up on this server, so the bot can only be public.")
+    search = str(body.get("search") or SEARCH_METHOD).strip().lower()
+    if search not in knowledge.SEARCH_METHODS:
+        raise HTTPException(422, f"search must be one of: {', '.join(knowledge.SEARCH_METHODS)}")
+    if not providers.available(spec["provider"]):
+        raise HTTPException(422, f"The {providers.PROVIDERS[spec['provider']]['label']} provider is not set up on this server.")
 
     if await app.state.redis.scard(BOTS_SET) >= MAX_BOTS:
         raise HTTPException(409, f"Bot limit reached ({MAX_BOTS}). Delete a bot first.")
@@ -302,6 +310,7 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         "owner_key_hash": hash_key(owner_key),
         "owner_email": owner_email,
         "access": access,
+        "search": search,
     }
     await app.state.redis.set(bot_key(bot_id), json.dumps(bot))
     await app.state.redis.sadd(BOTS_SET, bot_id)
@@ -363,10 +372,12 @@ async def deploy_bot(
 ):
     """Deploy a chatbot for a company: plan it, load its documents, and start serving it."""
     user = await current_user(request)
-    if login_required_to_deploy() and not user and not await is_admin(request):
+    admin = await is_admin(request)
+    if login_required_to_deploy() and not user and not admin:
         raise HTTPException(401, "Sign in with Google to deploy a bot.")
     client_ip = request.client.host if request.client else "unknown"
-    if await rate_limited(f"deploy:{client_ip}", DEPLOY_LIMIT_PER_IP, window_s=3600):
+    # Admins (and evaluate.py / loadtest.py, which use the admin token) are not limited.
+    if not admin and await rate_limited(f"deploy:{client_ip}", DEPLOY_LIMIT_PER_IP, window_s=3600):
         raise HTTPException(429, "Too many bots deployed from your address this hour. Please try again later.")
     return await create_bot(body, owner_email=user["email"] if user else "")
 
@@ -493,11 +504,12 @@ async def save_turn(bot_id: str, session_id: str, user_msg: str, bot_msg: str) -
 
 
 async def record_stats(
-    bot_id: str, tier: str, input_tokens: int, output_tokens: int, latency_ms: float, session_id: str
+    bot_id: str, tier: str, input_tokens: int, output_tokens: int, latency_ms: float, session_id: str,
+    provider: str = "anthropic",
 ) -> float:
     """Count the request and compare its cost with sending everything to the strong model."""
-    actual = router.request_cost(tier, input_tokens, output_tokens)
-    all_strong = router.request_cost("strong", input_tokens, output_tokens)
+    actual = router.request_cost(tier, input_tokens, output_tokens, provider)
+    all_strong = router.request_cost("strong", input_tokens, output_tokens, provider)
     key = stats_key(bot_id)
     pipe = app.state.redis.pipeline()
     pipe.hincrby(key, f"{tier}_requests", 1)
@@ -539,48 +551,50 @@ def mock_answer(bot: dict, message: str, sources: list[dict], tier: str) -> str:
     return f"[mock-{tier}] I don't have that in {bot['company']}'s documents. Please contact {bot['company']} directly."
 
 
+def bot_provider(bot: dict) -> str:
+    return bot["spec"].get("provider") or LLM_PROVIDER
+
+
 async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sources: list[dict]) -> dict:
     system = build_system_prompt(bot, sources)
     messages = history + [{"role": "user", "content": message}]
     est_input = router.estimate_tokens(system + " ".join(m["content"] for m in messages))
+    provider = bot_provider(bot)
 
-    if LLM_PROVIDER == "mock":
+    if provider == "mock":
         text = mock_answer(bot, message, sources, tier)
         return {
             "text": text,
             "model": f"mock-{tier}",
+            "tier": tier,
             "input_tokens": est_input,
             "output_tokens": router.estimate_tokens(text),
         }
 
-    if LLM_PROVIDER == "anthropic":
-        if not ANTHROPIC_API_KEY:
-            raise HTTPException(500, "ANTHROPIC_API_KEY is not set")
-        model = STRONG_MODEL if tier == "strong" else CHEAP_MODEL
-        resp = await app.state.http.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={"model": model, "max_tokens": 512, "system": system, "messages": messages},
-        )
-        if resp.status_code != 200:
+    # Reliability: retry a busy/failed call once, then fall back from the strong to the cheap model.
+    plan = [tier, tier] + (["cheap"] if tier == "strong" else [])
+    for attempt, use_tier in enumerate(plan):
+        try:
+            result = await providers.call(
+                app.state.http, provider, use_tier, system, messages, MAX_ANSWER_TOKENS, LLM_TIMEOUT_S
+            )
+        except providers.ProviderError as err:
             # Full details go to the server log only; the browser gets a plain message.
-            log.warning("LLM error %s: %s", resp.status_code, resp.text[:500])
-            raise HTTPException(502, "The AI model is not available right now. Please try again in a moment.")
-        data = resp.json()
-        usage = data.get("usage", {})
-        text = "".join(b.get("text", "") for b in data["content"])
+            log.warning("LLM error (%s %s, attempt %d): %s", provider, use_tier, attempt + 1, err)
+            if not err.retryable:
+                break  # bad key, unknown model or bad request: retrying won't help
+            await asyncio.sleep(0.5 * (attempt + 1))
+            continue
+        text = result["text"].strip()
         return {
-            "text": text,
-            "model": data.get("model", model),
-            "input_tokens": usage.get("input_tokens") or est_input,
-            "output_tokens": usage.get("output_tokens") or router.estimate_tokens(text),
+            "text": text or "Sorry, I couldn't put an answer together. Please try rephrasing.",
+            "model": result["model"],
+            "tier": use_tier,
+            "fallback": use_tier != tier,
+            "input_tokens": result["input_tokens"] or est_input,
+            "output_tokens": result["output_tokens"] or router.estimate_tokens(text),
         }
-
-    raise HTTPException(500, f"Unknown LLM_PROVIDER: {LLM_PROVIDER}")
+    raise HTTPException(502, "The AI model is not available right now. Please try again in a moment.")
 
 
 @app.post("/bots/{bot_id}/chat", response_model=ChatResponse)
@@ -621,12 +635,17 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
         tier = "cheap"
         reason += "; strong model paused because the monthly LLM budget is used up"
 
-    sources = knowledge.retrieve(bot["_index"], bot["chunks"], req.message, k=3)
+    sources = knowledge.retrieve(bot["_index"], bot["chunks"], req.message, k=3, method=bot.get("search", "keyword"))
     result = await call_llm(bot, history, req.message, tier, sources)
+    if result.get("fallback"):
+        tier = result["tier"]
+        reason += "; the strong model was busy, so the cheap model answered"
     total = await save_turn(bot_id, req.session_id, req.message, result["text"]) if remembers else 0
 
     latency_ms = round((time.perf_counter() - start) * 1000, 1)
-    cost = await record_stats(bot_id, tier, result["input_tokens"], result["output_tokens"], latency_ms, req.session_id)
+    cost = await record_stats(
+        bot_id, tier, result["input_tokens"], result["output_tokens"], latency_ms, req.session_id, bot_provider(bot)
+    )
     return ChatResponse(
         reply=result["text"],
         model=result["model"],
@@ -830,6 +849,12 @@ async def plan_endpoint(
         raise HTTPException(422, str(err))
     result["summary"] = planner.format_plan(result)
     return result
+
+
+@app.get("/providers")
+async def list_providers():
+    """AI providers this server can use, their cheap and strong models, and list prices."""
+    return {"default": LLM_PROVIDER, "providers": providers.describe()}
 
 
 @app.get("/examples")
