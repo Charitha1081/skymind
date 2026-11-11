@@ -1,0 +1,45 @@
+services:
+  redis:
+    image: redis:7-alpine
+    # Not published to your computer or network: only SkyMind can reach it.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  chatbot:
+    build: .
+    ports:
+      # Only this computer can open SkyMind (http://localhost:8000).
+      # To let other devices on your network in, set BIND_ADDRESS=0.0.0.0 (and set ADMIN_TOKEN).
+      - "${BIND_ADDRESS:-127.0.0.1}:8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      CHEAP_MODEL: ${CHEAP_MODEL:-claude-haiku-5-5}
+      STRONG_MODEL: ${STRONG_MODEL:-claude-sonnet-5-5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MEMORY_WINDOW: ${MEMORY_WINDOW:-10}
+      WORKERS: ${WORKERS:-1}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      CHAT_LIMIT_PER_SESSION: ${CHAT_LIMIT_PER_SESSION:-60}
+      CHAT_LIMIT_PER_IP: ${CHAT_LIMIT_PER_IP:-0}
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Load test tool. Not started with the app; run it on demand:
+  #   docker compose run --rm loadtest --sweep
+  loadtest:
+    build: .
+    profiles: ["loadtest"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+    depends_on:
+      - chatbot
+    entrypoint: ["python", "loadtest.py"]
+    command: ["--sweep"]

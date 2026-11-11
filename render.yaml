@@ -1,0 +1,41 @@
+# Render Blueprint: one click creates the SkyMind website and its Redis.
+# Render dashboard -> New -> Blueprint -> pick this GitHub repo -> Apply.
+services:
+  - type: web
+    name: skymind
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: skymind-redis
+          property: connectionString
+      - key: ADMIN_TOKEN
+        generateValue: true          # find it under Environment in the Render dashboard
+      - key: LLM_PROVIDER
+        value: mock                  # no API key, no cost. Switch to anthropic + add ANTHROPIC_API_KEY later.
+      - key: SEED_EXAMPLES
+        value: "true"                # free Redis is wiped on restart; re-create UNT Helper and Acme Support
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"                   # trust Render's proxy so rate limits see each visitor's address
+      - key: CHAT_LIMIT_PER_IP
+        value: "30"                  # messages per minute per visitor
+      - key: CHAT_LIMIT_PER_SESSION
+        value: "20"
+      - key: DEPLOY_LIMIT_PER_IP
+        value: "10"                  # bot deploys per hour per visitor
+      - key: MAX_BOTS
+        value: "20"
+      - key: WORKERS
+        value: "1"
+
+  - type: keyvalue
+    name: skymind-redis
+    plan: free
+    ipAllowList: []                  # no outside connections: only SkyMind can reach it
+    maxmemoryPolicy: volatile-lru    # under memory pressure drop expiring chat memory first, never the bots
