@@ -1675,8 +1675,16 @@ function chip(text, cls) {
 // Safe formatting for replies: ```code blocks```, **bold**, `code` and # headings.
 // Everything is built with text nodes (never innerHTML), so model output can't inject HTML.
 function inline(parent, text) {
-  text.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/).forEach(function (part) {
+  text.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/).forEach(function (part) {
     if (!part) return;
+    var link = part.match(/^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)$/);
+    if (link) {  // [text](https://...) becomes a real link; only http(s) addresses, so no javascript: links
+      var a = document.createElement("a");
+      a.href = link[2]; a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.textContent = link[1];
+      parent.append(a);
+      return;
+    }
     if (part.slice(0, 2) === "**" && part.slice(-2) === "**" && part.length > 4) {
       var st = document.createElement("strong"); st.textContent = part.slice(2, -2); parent.append(st);
     } else if (part.charAt(0) === "`" && part.slice(-1) === "`" && part.length > 2) {

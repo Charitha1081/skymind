@@ -45,6 +45,10 @@ for bad in ("not a site", "ftp://unt.edu", "https://localhost"):
         raise AssertionError(bad)
     except ValueError:
         pass
+assert improve.is_unanswered("The documents I have don't list courses for individual programs, so I can't tell you how many there are.")
+assert not improve.is_unanswered("UNT has 15 residence halls. Living Learning Communities let students live together.")
+cut = web.trim_cut_off("Courses:\n- CSCE 1030: Computer Science I\n- CSCE 4600: Operating Systems\n\nFor the full list, see the [UNT Catalog](https://cat")
+assert "https://cat" not in cut and cut.startswith("Courses:") and "Shortened" in cut, cut
 print("basics OK: partial answers detected, websites normalised, bad ones refused")
 
 ACME = {k: v for k, v in examples.EXAMPLES[1].items() if k != "key"}

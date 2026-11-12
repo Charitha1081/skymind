@@ -34,6 +34,9 @@ REFUSAL_MARKERS = (
     "don't have the details", "do not have the details", "don't have specific", "do not have specific",
     "don't have the specific", "do not have the specific", "don't have a list", "don't have the full",
     "don't have more", "don't have further", "not in the documents", "not in my information",
+    "can't tell you", "cannot tell you", "documents i have don't", "documents don't list", "documents don't include",
+    "documents don't say", "documents don't mention", "don't list", "do not list", "doesn't list", "isn't listed",
+    "not listed in", "don't mention", "doesn't mention", "don't specify", "doesn't specify",
 )
 CHECK_CHARS = 300  # how far into an answer to look for these phrases (streaming holds back this much)
 
