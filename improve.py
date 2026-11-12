@@ -30,7 +30,12 @@ REFUSAL_MARKERS = (
     "do not have details", "not able to find", "unable to find", "couldn't find", "could not find",
     "can't find", "cannot find", "no information about", "not in my documents", "isn't in my documents",
     "is not in my documents", "not covered in", "isn't covered", "i don't know", "i do not know",
+    # partial answers: "UNT has 126 graduate degrees. However, I don't have the details of ..."
+    "don't have the details", "do not have the details", "don't have specific", "do not have specific",
+    "don't have the specific", "do not have the specific", "don't have a list", "don't have the full",
+    "don't have more", "don't have further", "not in the documents", "not in my information",
 )
+CHECK_CHARS = 300  # how far into an answer to look for these phrases (streaming holds back this much)
 
 
 def gaps_key(bot_id: str) -> str:
@@ -53,14 +58,18 @@ def feedback_key(bot_id: str) -> str:
     return f"feedback:{bot_id}"
 
 
+def gapweb_key(bot_id: str) -> str:
+    return f"gapweb:{bot_id}"
+
+
 def bot_keys(bot_id: str) -> list[str]:
     """Fixed-name keys to delete with the bot (answer:/rated: keys expire on their own)."""
-    return [gaps_key(bot_id), gaptext_key(bot_id), feedback_key(bot_id)]
+    return [gaps_key(bot_id), gaptext_key(bot_id), feedback_key(bot_id), gapweb_key(bot_id)]
 
 
 def is_unanswered(reply: str) -> bool:
     """True when the bot said it couldn't answer (checked near the start of the reply)."""
-    head = reply[:300].lower().replace("’", "'")
+    head = reply[:CHECK_CHARS].lower().replace("’", "'")
     return any(m in head for m in REFUSAL_MARKERS)
 
 
@@ -69,20 +78,24 @@ def _normalise(question: str) -> tuple[str, str]:
     return text, text.lower().strip(" ?!.")
 
 
-async def log_gap(redis, bot_id: str, question: str) -> None:
+async def log_gap(redis, bot_id: str, question: str, web_url: str = "") -> None:
+    """Count a question the documents couldn't answer. web_url: the page it was answered from instead."""
     text, norm = _normalise(question)
     if not norm:
         return
     pipe = redis.pipeline()
     pipe.zincrby(gaps_key(bot_id), 1, norm)
     pipe.hsetnx(gaptext_key(bot_id), norm, text)
+    if web_url:
+        pipe.hset(gapweb_key(bot_id), norm, web_url[:500])
     pipe.zcard(gaps_key(bot_id))
-    _, _, size = await pipe.execute()
+    size = (await pipe.execute())[-1]
     if size > MAX_GAPS:  # forget the least-asked questions
         dropped = await redis.zrange(gaps_key(bot_id), 0, size - MAX_GAPS - 1)
         if dropped:
             await redis.zrem(gaps_key(bot_id), *dropped)
             await redis.hdel(gaptext_key(bot_id), *dropped)
+            await redis.hdel(gapweb_key(bot_id), *dropped)
 
 
 async def list_gaps(redis, bot_id: str, limit: int = 50) -> list[dict]:
@@ -90,15 +103,18 @@ async def list_gaps(redis, bot_id: str, limit: int = 50) -> list[dict]:
     if not rows:
         return []
     texts = await redis.hmget(gaptext_key(bot_id), [q for q, _ in rows])
-    return [{"question": t or q, "key": q, "count": int(n)} for (q, n), t in zip(rows, texts)]
+    webs = await redis.hmget(gapweb_key(bot_id), [q for q, _ in rows])
+    return [{"question": t or q, "key": q, "count": int(n), "web_url": w or ""}
+            for (q, n), t, w in zip(rows, texts, webs)]
 
 
 async def clear_gap(redis, bot_id: str, key: str | None = None) -> None:
     if key is None:
-        await redis.delete(gaps_key(bot_id), gaptext_key(bot_id))
+        await redis.delete(gaps_key(bot_id), gaptext_key(bot_id), gapweb_key(bot_id))
     else:
         await redis.zrem(gaps_key(bot_id), key)
         await redis.hdel(gaptext_key(bot_id), key)
+        await redis.hdel(gapweb_key(bot_id), key)
 
 
 async def remember_answer(redis, bot_id: str, session_id: str, question: str, reply: str, model: str) -> str:

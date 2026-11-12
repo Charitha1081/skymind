@@ -49,12 +49,14 @@ import planner
 import providers
 import router
 import standards
+import web
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 # Default provider for new bots: LLM_PROVIDER if set, else the first one with a key (Claude, Gemini), else mock.
 LLM_PROVIDER = providers.default_provider()
 SEARCH_METHOD = os.getenv("SEARCH_METHOD", "bm25").strip().lower()  # default search for new bots (keyword | bm25)
 MAX_ANSWER_TOKENS = int(os.getenv("MAX_ANSWER_TOKENS", "512"))
+WEB_LOOKUPS_PER_HOUR = int(os.getenv("WEB_LOOKUPS_PER_HOUR", "30"))  # website lookups per bot per hour
 STREAM_MOCK_DELAY_S = float(os.getenv("STREAM_MOCK_DELAY_S", "0.02"))  # mock provider: pause between words  # caps cost and length of each answer
 LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "25"))
 MEMORY_WINDOW = int(os.getenv("MEMORY_WINDOW", "10"))  # last N exchanges kept per conversation
@@ -312,6 +314,15 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         raise HTTPException(422, f"search must be one of: {', '.join(knowledge.SEARCH_METHODS)}")
     if search == "hybrid" and not embeddings.available():
         raise HTTPException(422, "Meaning search needs GEMINI_API_KEY on the server. Use search: bm25.")
+    try:
+        website = web.normalise_website(str(body.get("website") or ""))
+    except ValueError as err:
+        raise HTTPException(422, str(err))
+    if website:
+        try:
+            await ingest.check_public_url(website, resolve=lambda h: _resolve_quiet(h))
+        except ingest.IngestError as err:
+            raise HTTPException(422, str(err))
     if not providers.available(spec["provider"]):
         raise HTTPException(422, f"The {providers.PROVIDERS[spec['provider']]['label']} provider is not set up on this server.")
 
@@ -345,6 +356,8 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         "access": access,
         "search": search,
         "job": job,
+        "website": website,
+        "web_lookup": bool(website) and bool(body.get("web_lookup", True)) and job == "answer",
     }
     if search == "hybrid":  # embed before saving, so a failure leaves nothing half-made
         await app.state.redis.set(vectors_key(bot_id), json.dumps(await embed_or_fail(chunks)))
@@ -389,6 +402,10 @@ async def seed_examples() -> None:
             # Redis outlives a code update on hosting, so bring a sample bot's documents up to date
             # when examples.py changes (only for unowned sample bots).
             sample_hash = hashlib.sha256(ex["knowledge"].encode()).hexdigest()[:16]
+            if not bot.get("owner_email") and (bot.get("website", "") != ex.get("website", "")
+                                               or bool(bot.get("web_lookup")) != bool(ex.get("web_lookup"))):
+                bot["website"], bot["web_lookup"] = ex.get("website", ""), bool(ex.get("web_lookup"))
+                changed = True
             if not bot.get("owner_email") and bot.get("sample_hash") != sample_hash:
                 bot["chunks"] = knowledge.make_chunks(ex["knowledge"])
                 bot["sample_hash"] = sample_hash
@@ -546,6 +563,7 @@ async def improve_report(bot_id: str, request: Request):
         "characters": sum(len(c["text"]) for c in bot["chunks"]),
         "max_characters": MAX_KNOWLEDGE_CHARS,
         "website": bot.get("website", ""),
+        "web_lookup": bool(bot.get("web_lookup")),
         "job": bot.get("job", "answer"),
     }
 
@@ -750,6 +768,8 @@ class ChatResponse(BaseModel):
     unanswered: bool = False   # the bot said it couldn't answer; logged for the company
     job: str = "answer"
     context_sections: int = 0  # how many document sections the model was given
+    answered_from: str = "documents"   # or "website": the documents didn't have it, the company's site did
+    web_sources: list[dict] = []       # [{url, title}] pages the website answer came from
     first_token_ms: float | None = None  # streaming: time until the first word appeared
     streamed: bool = False
 
@@ -984,9 +1004,18 @@ async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
         bot_id, tier, result["input_tokens"], result["output_tokens"], latency_ms, req.session_id, bot_provider(bot)
     )
     # Improvement loop: log questions the bot couldn't answer, and keep the answer so it can be rated.
-    unanswered = ctx["job_cfg"]["log_gaps"] and improve.is_unanswered(result["text"]) and not router.is_greeting(req.message)
-    if unanswered:
-        await improve.log_gap(r, bot_id, req.message)
+    found = ctx.get("web")  # answered from the company's website instead of the documents
+    unanswered = bool(found) or (ctx["job_cfg"]["log_gaps"] and improve.is_unanswered(result["text"])
+                                 and not router.is_greeting(req.message))
+    if unanswered:  # still a gap in the documents, even when the website answered it
+        await improve.log_gap(r, bot_id, req.message, found["sources"][0]["url"] if found else "")
+    if ctx.get("web_fee"):
+        pipe = r.pipeline()
+        pipe.hincrbyfloat(stats_key(bot_id), "actual_cost_usd", ctx["web_fee"])
+        pipe.hincrbyfloat(stats_key(bot_id), "all_strong_cost_usd", ctx["web_fee"])
+        pipe.hincrby(stats_key(bot_id), "web_searches", ctx.get("web_searches", 0))
+        await pipe.execute()
+        cost += ctx["web_fee"]
     answer_id = await improve.remember_answer(r, bot_id, req.session_id, req.message, result["text"], result["model"])
     sources, job = ctx["sources"], ctx["job"]
     return ChatResponse(
@@ -1005,6 +1034,8 @@ async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
         unanswered=unanswered,
         job=job,
         context_sections=len(sources),
+        answered_from="website" if found else "documents",
+        web_sources=found["sources"] if found else [],
         first_token_ms=result.get("first_token_ms"),
         streamed=bool(result.get("streamed")),
     )
@@ -1015,7 +1046,73 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
     """Ask a question and get the whole answer at once."""
     ctx = await prepare_chat(bot_id, req, request)
     result = await call_llm(ctx["bot"], ctx["history"], req.message, ctx["tier"], ctx["sources"])
+    if website_lookup_wanted(ctx, result["text"]):
+        found = await website_lookup(ctx)
+        if found:
+            result = merge_web(ctx, result, found)
     return await finish_chat(ctx, result)
+
+
+# ---------- Website lookup: when the documents don't have it, check the company's own site ----------
+
+def website_lookup_wanted(ctx: dict, doc_answer: str) -> bool:
+    bot = ctx["bot"]
+    return bool(bot.get("web_lookup") and bot.get("website") and ctx["job"] == "answer"
+                and improve.is_unanswered(doc_answer) and not router.is_greeting(ctx["req"].message))
+
+
+async def website_lookup(ctx: dict) -> dict | None:
+    """Look the question up on the company's website (limited per bot per hour). None if not found."""
+    bot = ctx["bot"]
+    if await rate_limited(f"web:{bot['id']}", WEB_LOOKUPS_PER_HOUR, window_s=3600):
+        return None
+    found = await web.lookup(app.state.http, app.state.redis, bot, ctx["req"].message, bot_provider(bot), LLM_TIMEOUT_S * 3)
+    if not found:
+        return None
+    ctx["web_fee"] = found.get("searches", 0) * web.WEB_SEARCH_FEE
+    ctx["web_searches"] = found.get("searches", 0)
+    ctx["web_tokens"] = (found.get("input_tokens", 0), found.get("output_tokens", 0))
+    return found if found["text"] else None
+
+
+def merge_web(ctx: dict, result: dict, found: dict) -> dict:
+    ctx["web"] = found
+    domain = web.domain_of(ctx["bot"]["website"])
+    return {**result, "text": web.preface(ctx["bot"]["company"], domain) + found["text"],
+            "input_tokens": result["input_tokens"] + found.get("input_tokens", 0),
+            "output_tokens": result["output_tokens"] + found.get("output_tokens", 0)}
+
+
+class WebSettings(BaseModel):
+    website: str = Field(default="", max_length=300)
+    enabled: bool = True
+
+
+@app.patch("/bots/{bot_id}/web")
+async def update_web(bot_id: str, req: WebSettings, request: Request):
+    """Set the company website and turn website lookup on or off (owner or admin)."""
+    bot = await load_bot(bot_id)
+    await require_owner(request, bot)
+    try:
+        website = web.normalise_website(req.website)
+        if website:
+            await ingest.check_public_url(website, resolve=lambda h: _resolve_quiet(h))
+    except (ValueError, ingest.IngestError) as err:
+        raise HTTPException(422, str(err))
+    stored = json.loads(await app.state.redis.get(bot_key(bot_id)))
+    stored["website"] = website
+    stored["web_lookup"] = bool(website) and req.enabled
+    await app.state.redis.set(bot_key(bot_id), json.dumps(stored))
+    app.state.bot_cache.pop(bot_id, None)
+    return {"website": website, "web_lookup": stored["web_lookup"]}
+
+
+async def _resolve_quiet(host: str) -> list[str]:
+    """Look up a website name; if DNS can't answer right now, accept it (the fetch checks again later)."""
+    try:
+        return await ingest._resolve(host)
+    except OSError:
+        return ["8.8.8.8"]
 
 
 # ---------- Streaming: the answer appears word by word ----------
@@ -1096,13 +1193,40 @@ async def bot_chat_stream(bot_id: str, req: ChatRequest, request: Request):
         yield sse("start", {"tier": ctx["tier"], "route_reason": ctx["reason"], "job": job,
                             "sources": [s["title"] for s in ctx["sources"]] if job == "answer" else [],
                             "context_sections": len(ctx["sources"])})
+        # With website lookup on, the first CHECK_CHARS characters are held back. If the documents'
+        # answer turns out to be "I don't have that", the user never sees it: SkyMind checks the
+        # company's website instead and sends that answer.
+        bot = ctx["bot"]
+        lookup_on = bool(bot.get("web_lookup") and bot.get("website") and job == "answer"
+                         and not router.is_greeting(req.message))
+        held, decided, hide = [], not lookup_on, False
         try:
-            async for kind, value in stream_llm(ctx["bot"], ctx["history"], req.message, ctx["tier"], ctx["sources"], ctx["start"]):
+            async for kind, value in stream_llm(bot, ctx["history"], req.message, ctx["tier"], ctx["sources"], ctx["start"]):
                 if kind == "text":
-                    yield sse("text", {"text": value})
-                else:
-                    final = await finish_chat(ctx, value)
-                    yield sse("done", final.model_dump())
+                    if decided:
+                        if not hide:
+                            yield sse("text", {"text": value})
+                        continue
+                    held.append(value)
+                    so_far = "".join(held)
+                    if len(so_far) >= improve.CHECK_CHARS:
+                        decided, hide = True, improve.is_unanswered(so_far)
+                        if not hide:
+                            yield sse("text", {"text": so_far})
+                    continue
+                result = value
+                if not decided:
+                    hide = improve.is_unanswered(result["text"])
+                    if not hide and held:
+                        yield sse("text", {"text": "".join(held)})
+                if hide:
+                    yield sse("searching", {"site": web.domain_of(bot["website"])})
+                    found = await website_lookup(ctx)
+                    if found:
+                        result = merge_web(ctx, result, found)
+                    yield sse("text", {"text": result["text"]})
+                final = await finish_chat(ctx, result)
+                yield sse("done", final.model_dump())
         except HTTPException as err:
             yield sse("error", {"detail": err.detail})
         except Exception:  # never leak internals into the stream

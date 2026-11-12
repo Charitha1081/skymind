@@ -135,6 +135,8 @@ EXAMPLES = [
         "model": "auto",
         "monthly_budget": "$600",
         "knowledge": UNT_KNOWLEDGE.strip(),
+        "website": "https://www.unt.edu",  # not in the documents? look it up on unt.edu (and its subdomains)
+        "web_lookup": True,
     },
     {
         "key": "acme",

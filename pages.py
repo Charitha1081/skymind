@@ -520,6 +520,9 @@ DEPLOY_CSS = r"""
 .badans .q { font-weight: 600; }
 .badans .a { color: var(--muted); margin-top: 2px; }
 .improve textarea { min-height: 110px; }
+.webset { display: grid; gap: 8px; margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.webset .check { display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: 14px; }
+.webset .check input { width: auto; }
 .stdrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
 .stdrow button { font-size: 13px; padding: 6px 12px; border-radius: 999px; }
 .fixbox { margin: 14px 0 6px; padding: 14px; border-radius: 14px; border: 1px solid var(--zenith); background: var(--zenith-soft); }
@@ -616,6 +619,17 @@ DEPLOY_BODY = _header("deploy") + r"""
 
       <section class="panel" aria-labelledby="docs-title">
         <h2 class="step-title" id="docs-title"><b>3</b>What should it know?</h2>
+        <div class="row" id="webrow">
+          <div><label for="web_mode">When the documents don't have the answer</label>
+            <select id="web_mode">
+              <option value="docs">Say so (documents only, strict)</option>
+              <option value="site">Look it up on our website</option>
+            </select>
+            <div class="hint">Only your own site is searched, never the rest of the internet. Answers link their source pages.</div></div>
+          <div id="website_box" hidden><label for="website">Your website</label>
+            <input id="website" type="url" placeholder="https://www.yourcompany.com">
+            <div class="hint">Its subdomains count too (unt.edu covers dining.unt.edu).</div></div>
+        </div>
         <div class="stdrow" id="stdrow" hidden><span class="sub small">Start from a standard:</span></div>
         <p class="sub" id="docs-intro" style="margin:0">Paste FAQs, policies or product info, upload files, or import web pages. Each adds to the documents below. Lines starting with # or ## become section titles.</p>
         <div class="row">
@@ -728,7 +742,12 @@ function applyJob() {
   if (job !== "answer") { $("model").value = "strong"; }
   $("model").disabled = job !== "answer";
   $("stdrow").hidden = job !== "code_review";
+  $("webrow").hidden = job !== "answer";
 }
+$("web_mode").addEventListener("change", function () {
+  $("website_box").hidden = $("web_mode").value !== "site";
+  if (!$("website_box").hidden) $("website").focus();
+});
 // Ready-made coding standards (OWASP Top 10, PEP 8, clean code) for code reviewers: one click adds them.
 (async function loadStandards() {
   try {
@@ -764,6 +783,9 @@ function fill(ex) {
   $("knowledge").value = ex.knowledge;
   $("job").value = ex.job || "answer";
   applyJob();
+  $("web_mode").value = ex.web_lookup && ex.website ? "site" : "docs";
+  $("website").value = ex.website || "";
+  $("website_box").hidden = $("web_mode").value !== "site";
   if (ex.provider) { $("provider").value = ex.provider; }
   updateCount();
   schedulePlan(0);
@@ -942,6 +964,45 @@ async function improvePanel(bot, row) {
   function note(text) { var e = document.createElement("div"); e.className = "sub small"; e.textContent = text; box.append(e); }
 
   var lineByKey = {}, pendingFix = [];
+  if (!rep.job || rep.job === "answer") {
+    var wb = document.createElement("div");
+    wb.className = "webset";
+    var wl = document.createElement("label");
+    wl.className = "check";
+    var wc = document.createElement("input");
+    wc.type = "checkbox";
+    wc.checked = !!rep.web_lookup;
+    wl.append(wc, document.createTextNode(" When the documents don't have the answer, look it up on"));
+    var wu = document.createElement("input");
+    wu.type = "url";
+    wu.placeholder = "https://www.yourcompany.com";
+    wu.value = rep.website || "";
+    wu.setAttribute("aria-label", "Your website");
+    var ws = document.createElement("button");
+    ws.type = "button";
+    ws.textContent = "Save";
+    var wm = document.createElement("span");
+    wm.className = "small";
+    ws.onclick = async function () {
+      wm.className = "small"; wm.textContent = "Saving...";
+      try {
+        var res = await fetch("/bots/" + encodeURIComponent(bot.id) + "/web", {
+          method: "PATCH",
+          headers: ownerHeaders(bot, { "Content-Type": "application/json" }),
+          body: JSON.stringify({ website: wu.value.trim(), enabled: wc.checked })
+        });
+        var d = await res.json();
+        if (!res.ok) { wm.className = "small bad"; wm.textContent = typeof d.detail === "string" ? d.detail : "Could not save."; return; }
+        wm.className = "small good";
+        wm.textContent = d.web_lookup ? "On: unanswered questions are looked up on your website." : "Off: documents only.";
+      } catch (e) { wm.className = "small bad"; wm.textContent = "Could not reach the server."; }
+    };
+    var wrow = document.createElement("div");
+    wrow.className = "urlrow";
+    wrow.append(wu, ws);
+    wb.append(wl, wrow, wm);
+    box.append(wb);
+  }
   h("Questions it couldn't answer (" + rep.gaps.length + ")");
   if (!rep.gaps.length) note(rep.job && rep.job !== "answer"
     ? "Reviews and idea sessions are not logged here. Use the ratings below to see what to improve."
@@ -972,6 +1033,14 @@ async function improvePanel(bot, row) {
     use.className = "quiet";
     use.textContent = "Answer it";
     use.onclick = function () { ta.value += (ta.value ? "\n\n" : "") + "## " + g.question + "\n"; ta.focus(); };
+    if (g.web_url && /^https?:\/\//i.test(g.web_url)) {
+      var src = document.createElement("a");
+      src.href = g.web_url; src.target = "_blank"; src.rel = "noopener noreferrer";
+      src.className = "small";
+      src.textContent = "answered from your website";
+      src.title = g.web_url + " (add it to your documents to answer without a lookup)";
+      right.prepend(src);
+    }
     right.append(n, use, fix);
     line.append(q, right);
     box.append(line);
@@ -1377,6 +1446,11 @@ $("deploy").onclick = async function () {
   body.bot_name = $("bot_name").value;
   body.company = $("company").value;
   body.knowledge = $("knowledge").value;
+  if ($("job").value === "answer" && $("web_mode").value === "site") {
+    if (!$("website").value.trim()) { $("error").textContent = "Add your website, or choose documents only."; $("website").focus(); return; }
+    body.website = $("website").value.trim();
+    body.web_lookup = true;
+  }
   $("deploy").disabled = true;
   $("deploy").textContent = "Deploying...";
   try {
@@ -1465,6 +1539,10 @@ body { background: var(--bg); }
 .chat.wide .bubble { max-width: 100%; }
 .bubble.streaming::after { content: ""; display: inline-block; width: 7px; height: 1.05em; margin-left: 2px; vertical-align: -2px; background: var(--zenith); animation: caret 1s steps(1) infinite; }
 @keyframes caret { 50% { opacity: 0; } }
+.websrc { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; margin-top: 10px; font-size: 13px; white-space: normal; }
+.websrc span { color: var(--muted); }
+.websrc a { overflow-wrap: anywhere; }
+.chip.web { background: var(--good-soft); color: var(--good); border-color: transparent; }
 @media (prefers-reduced-motion: reduce) { .bubble.streaming::after { animation: none; } }
 .bubble pre { white-space: pre; overflow-x: auto; margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; line-height: 1.45; }
 .msg.user .bubble pre { background: rgba(0,0,0,.18); border-color: transparent; color: inherit; }
@@ -1649,7 +1727,24 @@ function addMessage(text, who, data) {
       meta.append(chip((data.job === "code_review" ? "Checked against " : "Used ") + data.context_sections + " document sections"));
     }
     if (data.budget_guard) { meta.append(chip("Budget guard on")); }
+    if (data.answered_from === "website") { meta.append(chip("From the company website", "web")); }
     b.append(meta);
+    if (data.answered_from === "website" && data.web_sources && data.web_sources.length) {
+      var srcs = document.createElement("div");
+      srcs.className = "websrc";
+      var lab = document.createElement("span");
+      lab.textContent = "Sources:";
+      srcs.append(lab);
+      data.web_sources.forEach(function (s) {
+        if (!/^https?:\/\//i.test(s.url || "")) return;  // only real web links
+        var a = document.createElement("a");
+        a.href = s.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+        a.textContent = s.title || s.url;
+        a.title = s.url;
+        srcs.append(a);
+      });
+      b.append(srcs);
+    }
     if (data.answer_id) { b.append(rateRow(data.answer_id)); }
   }
   row.append(b);
@@ -1807,6 +1902,19 @@ async function askStreaming(text, wait) {
           got += ev.data.text;
           bubble.replaceChildren();
           renderRich(bubble, got);  // formatted as it grows (bold, code blocks)
+          $("log").scrollTop = $("log").scrollHeight;
+        } else if (ev.event === "searching" && ev.data) {
+          wait.remove();
+          if (!row) {
+            row = document.createElement("div");
+            row.className = "msg bot";
+            bubble = document.createElement("div");
+            bubble.className = "bubble streaming";
+            row.append(bubble);
+            $("log").append(row);
+          }
+          got = "";
+          bubble.textContent = "That isn't in my documents. Checking " + ev.data.site + "...";
           $("log").scrollTop = $("log").scrollHeight;
         } else if (ev.event === "done") { done = ev.data; }
         else if (ev.event === "error") { failure = ev.data && ev.data.detail; }

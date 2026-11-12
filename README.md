@@ -99,6 +99,21 @@ Answers, mock provider (no AI, extractive baseline):
 
 Add your real-model rows by running `evaluate answers` with Claude and/or Gemini.
 
+## Website lookup: documents first, then the company's own site
+
+Each question-answering bot has a knowledge source, chosen on `/deploy` (and changeable under **Improve**):
+
+- **Documents only (strict):** if the documents don't have it, the bot says so.
+- **Documents, then our website:** if the documents don't answer (including partial answers like "However, I don't have the details..."), SkyMind looks it up on the company's own site, e.g. `unt.edu` and its subdomains, **never the rest of the internet**. The answer starts "That isn't in UNT's documents, so I checked unt.edu:", shows a *From the company website* chip and links its source pages.
+
+How (`web.py`):
+1. **Claude bots** use Claude's web search tool with `allowed_domains` set to the company's domain, and its citations become the source links. Each search costs $0.01 ($10 per 1,000), counted in the bot's spend. At most 3 searches per question.
+2. **Other providers, or if web search is off for your Anthropic organisation:** SkyMind's own reader (the Suggest fix crawler) reads the site, follows related same-site links (SSRF-safe) and answers from the best passages.
+
+Guards: answers are cached for a day per question; `WEB_LOOKUPS_PER_HOUR` (default 30) per bot caps the bill; when streaming, the first 300 characters are held back so a "not in my documents" answer is never shown before the lookup. Every website answer is still logged under **Questions it couldn't answer**, marked *answered from your website*, so the company can add it to its documents (or click Suggest fix) and skip the lookup next time.
+
+The UNT Helper sample has it on for `https://www.unt.edu`.
+
 ## Streaming answers
 
 Answers appear word by word, like ChatGPT. `POST /bots/{id}/chat/stream` sends Server-Sent Events: `start` (model tier, sources), many `text` pieces as the model writes, then `done` with the same fields as `/chat` plus `first_token_ms` (time to first word, shown as a chip). Claude, Gemini and Ollama each stream in their own format; `providers.stream()` parses all three behind one async generator.
@@ -146,7 +161,7 @@ pip install -r requirements-dev.txt
 python tests/run_all.py
 ```
 
-Nine suites with no network or paid calls: streaming (Claude, Gemini and Ollama stream parsers, event order, fallbacks), bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits), Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions), the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
+Ten suites with no network or paid calls: website lookup (strict mode, cache, Claude search with allowed_domains and the fee, fallback when search is off, refusal held back while streaming), streaming (Claude, Gemini and Ollama stream parsers, event order, fallbacks), bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits), Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions), the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
 
 ## What happens when a question arrives
 
@@ -251,6 +266,7 @@ The server and the load tester share one machine, so treat the numbers as a lowe
 | `PATCH /bots/{id}/access` | Change who can chat with a bot (owner or admin) |
 | `GET /bots` | Every bot (admin token only) |
 | `POST /bots/{id}/chat` | Chat with a bot. Returns `answer_id` (for rating) and `unanswered` |
+| `PATCH /bots/{id}/web` | Set the company website and turn website lookup on or off (owner or admin) |
 | `POST /bots/{id}/chat/stream` | Same, streamed as Server-Sent Events (`start`, `text`..., `done` or `error`) |
 | `POST /bots/{id}/feedback` | Rate an answer helpful or not (only the conversation that got it) |
 | `GET /bots/{id}/improve` | Questions it couldn't answer, ratings, not-helpful answers (owner or admin) |
@@ -277,6 +293,7 @@ Interactive docs: http://localhost:8000/docs
 | CHEAP_MODEL / STRONG_MODEL | claude-haiku-5-5 / claude-sonnet-5-5 | Claude models (Gemini and Ollama have their own, see "Any AI model") |
 | SEARCH_METHOD | bm25 | Default search for new bots: `bm25`, `keyword` or `hybrid` |
 | EMBED_MODEL / EMBED_DIM | gemini-embedding-001 / 768 | Embedding model and vector size for hybrid search (needs GEMINI_API_KEY) |
+| WEB_LOOKUPS_PER_HOUR | 30 | Website lookups per bot per hour (each Claude web search costs $0.01) |
 | FIX_LIMIT_PER_HOUR | 10 | Suggest fix runs per bot per hour |
 | IMPORT_LIMIT_PER_HOUR | 30 | File and web-page imports per account or address per hour |
 | MAX_ANSWER_TOKENS | 512 | Longest answer, caps cost |
@@ -299,7 +316,7 @@ Interactive docs: http://localhost:8000/docs
 
 ## Files
 
-`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `embeddings.py` (meaning search), `jobs.py` (answer, code reviewer, idea partner), `standards.py` (OWASP, PEP 8, clean code rule sets), `fixer.py` (Suggest fix), `improve.py` (unanswered questions and ratings), `ingest.py` (PDF, Word and web page import), `unt_student_services.md` (sample document to upload), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
+`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `embeddings.py` (meaning search), `jobs.py` (answer, code reviewer, idea partner), `standards.py` (OWASP, PEP 8, clean code rule sets), `fixer.py` (Suggest fix), `web.py` (website lookup), `improve.py` (unanswered questions and ratings), `ingest.py` (PDF, Word and web page import), `unt_student_services.md` (sample document to upload), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
 ## Honest limits
 
