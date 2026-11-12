@@ -99,17 +99,32 @@ Answers, mock provider (no AI, extractive baseline):
 
 Add your real-model rows by running `evaluate answers` with Claude and/or Gemini.
 
+## Bot jobs: more than answering questions
+
+When deploying, a company picks what its bot is **for**. The documents are then its knowledge or its rules for that job:
+
+| Job | What users do | What the documents are | Model |
+|---|---|---|---|
+| **Answer questions** | Ask about policies, products, services | FAQs, policies, product info | Routed: cheap for easy, strong for hard |
+| **Code reviewer** | Paste code (up to 12,000 characters) | The company's engineering rules | Always strong |
+| **Idea partner** | Describe a goal or problem | Products, customers, goals, limits | Always strong |
+
+The code reviewer gives a summary (ready to merge or not), issues ranked High / Medium / Low with the fix, and **cites the company's own rule** for each one, e.g. `[Security rules]`. A plain chatbot can review code; a SkyMind reviewer reviews it against *your* standards. It never repeats a secret it finds, and flags comments that try to instruct the reviewer (prompt injection) instead of obeying them. Reviews and ideas see every document section when they fit (15,000 characters), otherwise the 6 best matches. Without an AI key, a rule-based checker (secrets, SQL injection, bare except, missing timeouts, money as float, print, TODO, eval) still reviews and cites the rules, so the demo works offline.
+
+Samples: `/chat/acme-code-reviewer` (with a "Try sample code with bugs" button) and `/chat/acme-idea-partner`.
+
 ## Improve your bot (the improvement loop)
 
 A bot is only as useful as its documents. SkyMind shows each company what is missing so they can fix it in minutes, without retraining any model:
 
 1. **Questions I couldn't answer.** When the bot says it doesn't have the information, the question is logged (repeats are counted). Owners see the list under **Your bots → Improve** on `/deploy`.
 2. **Thumbs up and down.** Every answer on the chat page has *Was this helpful? Yes / No*. Not-helpful answers are kept with the question so the owner can see what went wrong. The admin console shows each bot's helpful percentage.
-3. **Add the missing information.** In **Improve**, type the answer (**Answer it**), upload files, or import a web page. The bot uses it on the next question. Then click **Mark fixed**.
-4. **More ways to add documents:** PDF, Word (.docx), text, Markdown and CSV files (up to 5 MB each), and public web pages or online PDFs by link.
-5. **Embedding search (hybrid).** Choose *Meaning + keywords* when deploying (needs GEMINI_API_KEY, free tier). Documents are embedded once with `gemini-embedding-001`; each question is matched by meaning and by words, and the two rankings are combined (reciprocal rank fusion). If embeddings fail, the bot falls back to BM25 and keeps working.
+3. **Let SkyMind fix it.** In **Improve**, enter the company website and click **Suggest fix**. SkyMind reads the page, follows the links that match the unanswered questions (same site only, up to 6 pages), finds the passages that answer each one, and drafts new sections ending in `Source: <page>`. With an AI model the strong model rewrites the passages, using only their facts, and lists what the site doesn't answer. Without one, the passages themselves are used. The owner edits the draft and clicks **Add to documents**, and the answered questions are marked fixed. Nothing is added without approval.
+4. **Or add it yourself.** Type the answer (**Answer it**), upload files, or import a web page. The bot uses it on the next question.
+5. **More ways to add documents:** PDF, Word (.docx), text, Markdown and CSV files (up to 5 MB each), and public web pages or online PDFs by link.
+6. **Embedding search (hybrid).** Choose *Meaning + keywords* when deploying (needs GEMINI_API_KEY, free tier). Documents are embedded once with `gemini-embedding-001`; each question is matched by meaning and by words, and the two rankings are combined (reciprocal rank fusion). If embeddings fail, the bot falls back to BM25 and keeps working.
 
-Demo: deploy a bot with only the *About UNT* paragraph, ask "Do I need a meal plan?" (it can't answer), open **Improve**, upload `unt_student_services.md`, and ask again.
+Demo: deploy a bot with only the *About UNT* paragraph, ask "Do I need a meal plan?" (it can't answer), open **Improve**, click **Suggest fix** with `https://dining.unt.edu` (or upload `unt_student_services.md`), approve, and ask again.
 
 Web import safety: SkyMind only fetches `http(s)` pages on ports 80/443 whose addresses are all public, re-checks every redirect, and refuses localhost, private networks and cloud metadata addresses (SSRF protection). Imports are limited to 30 per hour per account.
 
@@ -120,7 +135,7 @@ pip install -r requirements-dev.txt
 python tests/run_all.py
 ```
 
-Six suites with no network or paid calls: the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
+Eight suites with no network or paid calls: bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits), Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions), the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
 
 ## What happens when a question arrives
 
@@ -228,6 +243,7 @@ The server and the load tester share one machine, so treat the numbers as a lowe
 | `POST /bots/{id}/feedback` | Rate an answer helpful or not (only the conversation that got it) |
 | `GET /bots/{id}/improve` | Questions it couldn't answer, ratings, not-helpful answers (owner or admin) |
 | `DELETE /bots/{id}/gaps?question=` | Mark a question fixed (owner or admin) |
+| `POST /bots/{id}/suggest-fix` | Read the company's site and draft the missing sections for the unanswered questions (owner or admin) |
 | `POST /bots/{id}/knowledge` | Add (`append`) or replace (`replace`) a bot's documents (owner or admin) |
 | `POST /import/file` | Turn a PDF, Word, text, Markdown or CSV file into text |
 | `POST /import/url` | Turn a public web page or online PDF into text |
@@ -249,6 +265,7 @@ Interactive docs: http://localhost:8000/docs
 | CHEAP_MODEL / STRONG_MODEL | claude-haiku-5-5 / claude-sonnet-5-5 | Claude models (Gemini and Ollama have their own, see "Any AI model") |
 | SEARCH_METHOD | bm25 | Default search for new bots: `bm25`, `keyword` or `hybrid` |
 | EMBED_MODEL / EMBED_DIM | gemini-embedding-001 / 768 | Embedding model and vector size for hybrid search (needs GEMINI_API_KEY) |
+| FIX_LIMIT_PER_HOUR | 10 | Suggest fix runs per bot per hour |
 | IMPORT_LIMIT_PER_HOUR | 30 | File and web-page imports per account or address per hour |
 | MAX_ANSWER_TOKENS | 512 | Longest answer, caps cost |
 | MEMORY_WINDOW | 10 | Recent exchanges kept per conversation |
@@ -269,7 +286,7 @@ Interactive docs: http://localhost:8000/docs
 
 ## Files
 
-`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `embeddings.py` (meaning search), `improve.py` (unanswered questions and ratings), `ingest.py` (PDF, Word and web page import), `unt_student_services.md` (sample document to upload), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
+`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `embeddings.py` (meaning search), `jobs.py` (answer, code reviewer, idea partner), `fixer.py` (Suggest fix), `improve.py` (unanswered questions and ratings), `ingest.py` (PDF, Word and web page import), `unt_student_services.md` (sample document to upload), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
 ## Honest limits
 
@@ -277,7 +294,8 @@ Interactive docs: http://localhost:8000/docs
 - Memory types `summary` and `long_term` are planned. Today every bot keeps the recent messages of each conversation.
 - BM25 and keyword search can miss questions that use different words than the documents. Hybrid search fixes this but needs a Gemini key, and its threshold is only tuned once you run `evaluate search --tune`.
 - Vectors are stored in Redis next to the bot; for very large document sets a vector database (pgvector) would be the next step.
-- Pages that need JavaScript to show text, and scanned PDFs (images), import as almost no text.
+- Pages that need JavaScript to show text, and scanned PDFs (images), import as almost no text. Suggest fix reads links in the page's HTML; menus built by JavaScript are not followed, so give it a more specific page (e.g. the FAQ).
+- The offline code checker only knows a handful of patterns; real reviews need an AI model.
 - Answers are graded by required facts, which is strict and explainable but can mark a correct paraphrase as wrong (e.g. "fourteen" vs "14"). Check misses with `--show`.
 - Accounts are individual Google sign-ins. Teams (several people managing one company's bots) are not built yet.
 - The deploy page is open to anyone who can reach the server, limited by MAX_BOTS. Keep BIND_ADDRESS at 127.0.0.1 unless you need others to connect.

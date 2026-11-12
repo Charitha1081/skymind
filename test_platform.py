@@ -31,7 +31,7 @@ with TestClient(main.app) as c:
         r = c.get(path)
         assert r.status_code == 200 and "text/html" in r.headers["content-type"], path
     print("4 pages serve OK")
-    assert len(c.get("/examples").json()) == 2
+    assert len(c.get("/examples").json()) == 4
 
     # deploy the two sample customers
     unt = deploy(c, examples.EXAMPLES[0])

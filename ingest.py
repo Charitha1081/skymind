@@ -116,8 +116,13 @@ class _PageText(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.out, self.skip, self.title, self.in_title, self.in_head = [], 0, "", False, False
+        self.links: list[tuple[str, str]] = []   # (href, link text), including menu links
+        self._href, self._atext = None, []
 
     def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._href = dict(attrs).get("href")
+            self._atext = []
         if tag in self.SKIP:
             self.skip += 1
         elif tag == "title":
@@ -129,6 +134,10 @@ class _PageText(HTMLParser):
             self.out.append("\n")
 
     def handle_endtag(self, tag):
+        if tag == "a" and self._href:
+            if len(self.links) < 500:
+                self.links.append((self._href, " ".join("".join(self._atext).split())[:120]))
+            self._href = None
         if tag in self.SKIP and self.skip:
             self.skip -= 1
         elif tag == "title":
@@ -138,6 +147,8 @@ class _PageText(HTMLParser):
             self.in_head = False
 
     def handle_data(self, data):
+        if self._href is not None:
+            self._atext.append(data)
         if self.in_title:
             self.title += data
         elif not self.skip:
@@ -145,8 +156,19 @@ class _PageText(HTMLParser):
 
 
 def html_to_text(html: str, url: str = "") -> tuple[str, str]:
+    title, text, _ = html_page(html, url)
+    return title, text
+
+
+def html_page(html: str, url: str = "") -> tuple[str, str, list[tuple[str, str]]]:
+    """(title, text, links). Links are absolute http(s) addresses with their link text."""
     parser = _PageText()
     parser.feed(html)
+    links = []
+    for href, label in parser.links:
+        absolute = urljoin(url, href.strip()).split("#")[0]
+        if urlsplit(absolute).scheme in ("http", "https"):
+            links.append((absolute, label))
     title = " ".join(parser.title.split())[:120] or urlsplit(url).netloc or "Web page"
     body = "".join(parser.out)
     lines = [ln.strip() for ln in body.split("\n")]
@@ -155,7 +177,7 @@ def html_to_text(html: str, url: str = "") -> tuple[str, str]:
         raise IngestError("Found almost no readable text on this page (it may need JavaScript).")
     if not text.startswith("## "):
         text = f"## {title}\n{text}"
-    return title, text
+    return title, text, links
 
 
 def _is_public(ip: str) -> bool:
@@ -199,6 +221,12 @@ async def _resolve(host: str) -> list[str]:
 
 async def fetch_url(url: str, client: httpx.AsyncClient | None = None, resolve=None) -> tuple[str, str]:
     """Fetch a public page (following up to 3 redirects, each re-checked) and return (title, text)."""
+    page = await fetch_page(url, client, resolve)
+    return page["title"], page["text"]
+
+
+async def fetch_page(url: str, client: httpx.AsyncClient | None = None, resolve=None) -> dict:
+    """Like fetch_url, but returns {"url" (after redirects), "title", "text", "links"}."""
     own = client is None
     client = client or httpx.AsyncClient(timeout=FETCH_TIMEOUT_S, follow_redirects=False)
     try:
@@ -224,11 +252,12 @@ async def fetch_url(url: str, client: httpx.AsyncClient | None = None, resolve=N
                 raise IngestError("Could not download that page (it may be down or too slow).") from None
             if ctype == "application/pdf":
                 name = urlsplit(url).path.rsplit("/", 1)[-1] or "document.pdf"
-                return name, _pdf(name, bytes(body))
+                return {"url": url, "title": name, "text": _pdf(name, bytes(body)), "links": []}
             text = body.decode(resp.encoding or "utf-8", errors="replace")
             if ctype == "text/plain":
-                return url, f"## {urlsplit(url).netloc}\n{_clean(text)}"
-            return html_to_text(text, url)
+                return {"url": url, "title": url, "text": f"## {urlsplit(url).netloc}\n{_clean(text)}", "links": []}
+            title, page_text, links = html_page(text, url)
+            return {"url": url, "title": title, "text": page_text, "links": links}
         raise IngestError("Too many redirects.")
     finally:
         if own:

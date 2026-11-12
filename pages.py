@@ -353,7 +353,7 @@ LANDING_BODY = _header("home") + r"""
   <section class="hero">
     <div>
       <h1>Your company's AI helper, deployed and run for you.</h1>
-      <p class="lead">Tell SkyMind how many people will use it, how fast it must answer and what you can spend. It plans the servers, deploys a chatbot on your documents, sends each question to the right model and keeps you inside your budget.</p>
+      <p class="lead">Tell SkyMind what your bot should do (answer questions, review code or brainstorm ideas), who will use it and what you can spend. It plans the servers, deploys the bot on your documents, sends each request to the right model and keeps you inside your budget. When the bot can't answer, SkyMind finds the fix on your website.</p>
       <div class="actions">
         <a class="btn primary" href="/deploy">Deploy your AI helper</a>
         <a class="btn" href="/admin">Open the admin console</a>
@@ -382,7 +382,7 @@ LANDING_BODY = _header("home") + r"""
       <div class="view">
         <div class="who">Their users<span>/chat</span></div>
         <div>
-          <p>Chat with an assistant that answers only from that company's documents. Try the samples:</p>
+          <p>Chat with assistants that answer questions, review code or brainstorm, using only that company's documents and rules. Try the samples:</p>
           <div class="botlinks" id="botlist"><span class="sub small">Loading bots...</span></div>
         </div>
         <span></span>
@@ -401,7 +401,7 @@ LANDING_BODY = _header("home") + r"""
       <li><h3>Find</h3><p>Pull the three document sections that best match the question.</p></li>
       <li><h3>Route</h3><p>Short, simple questions go to the cheap model. Long, multi-part or "explain why" questions go to the strong one.</p></li>
       <li><h3>Guard</h3><p>If the bot has used its monthly model budget, the strong model is paused.</p></li>
-      <li><h3>Answer</h3><p>Reply from the documents only. If the answer is not there, say so.</p></li>
+      <li><h3>Answer</h3><p>Reply from the documents only. If the answer is not there, say so and log the question so the company can fix it.</p></li>
       <li><h3>Remember</h3><p>Keep the last ten exchanges of each conversation, separately for every bot.</p></li>
       <li><h3>Record</h3><p>Log latency, tokens, cost and what an always-strong setup would have cost.</p></li>
     </ol>
@@ -520,6 +520,11 @@ DEPLOY_CSS = r"""
 .badans .q { font-weight: 600; }
 .badans .a { color: var(--muted); margin-top: 2px; }
 .improve textarea { min-height: 110px; }
+.fixbox { margin: 14px 0 6px; padding: 14px; border-radius: 14px; border: 1px solid var(--zenith); background: var(--zenith-soft); }
+.fixtitle { font-weight: 700; margin-bottom: 4px; }
+.fixbox .urlrow { margin-top: 10px; }
+.fixout { margin-top: 10px; display: grid; gap: 6px; }
+.improve textarea.flash { box-shadow: 0 0 0 4px var(--zenith-soft); border-color: var(--zenith); transition: box-shadow .3s; }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .plan { position: static; }
@@ -542,6 +547,15 @@ DEPLOY_BODY = _header("deploy") + r"""
     <div>
       <section class="panel" aria-labelledby="needs-title">
         <h2 class="step-title" id="needs-title"><b>1</b>What do you need?</h2>
+        <div class="row">
+          <div><label for="job">What should it do?</label>
+            <select id="job">
+              <option value="answer">Answer questions from your documents</option>
+              <option value="code_review">Review code against your engineering rules</option>
+              <option value="ideas">Brainstorm ideas that fit your company</option>
+            </select>
+            <div class="hint" id="job_hint">For customers or staff: FAQs, policies, products.</div></div>
+        </div>
         <div class="row">
           <div><label for="bot_name">Bot name</label><input id="bot_name" placeholder="Acme Support" maxlength="60"></div>
           <div><label for="company">Company</label><input id="company" placeholder="Acme Outdoor Gear" maxlength="80"></div>
@@ -600,7 +614,7 @@ DEPLOY_BODY = _header("deploy") + r"""
 
       <section class="panel" aria-labelledby="docs-title">
         <h2 class="step-title" id="docs-title"><b>3</b>What should it know?</h2>
-        <p class="sub" style="margin:0">Paste FAQs, policies or product info, upload files, or import web pages. Each adds to the documents below. Lines starting with # or ## become section titles.</p>
+        <p class="sub" id="docs-intro" style="margin:0">Paste FAQs, policies or product info, upload files, or import web pages. Each adds to the documents below. Lines starting with # or ## become section titles.</p>
         <div class="row">
           <div><label for="file">Upload PDF, Word, text or CSV files</label>
             <input id="file" type="file" multiple accept=".pdf,.docx,.txt,.md,.markdown,.csv"></div>
@@ -685,9 +699,33 @@ function spec() {
     latency_target_p95: $("latency").value,
     memory: $("memory").value,
     model: $("model").value,
-    monthly_budget: $("budget").value
+    monthly_budget: $("budget").value,
+    job: $("job").value
   };
 }
+var JOB_TEXT = {
+  answer: ["For customers or staff: FAQs, policies, products.", "What should it know?",
+           "Paste FAQs, policies or product info, upload files, or import web pages. Each adds to the documents below. Lines starting with # or ## become section titles.",
+           "## Returns\nItems can be returned within 30 days of delivery..."],
+  code_review: ["Your developers paste code; the bot reviews it against your rules and cites them. Always uses the strong model.",
+                "What are your engineering rules?",
+                "Paste your coding standards, security rules and review checklist, or upload them. Each ## heading becomes a rule the review can cite.",
+                "## Security rules\nNever write API keys in code; read them from environment variables..."],
+  ideas: ["Your team describes a goal; the bot brainstorms ideas that fit your products, customers and limits. Always uses the strong model.",
+          "What should it know about your company?",
+          "Paste what you sell, who your customers are, your goals and your limits. Ideas will cite these sections.",
+          "## Goals for 2027\nGrow repeat customers by 20%..."]
+};
+function applyJob() {
+  var job = $("job").value, t = JOB_TEXT[job];
+  $("job_hint").textContent = t[0];
+  $("docs-title").lastChild.textContent = t[1];
+  $("docs-intro").textContent = t[2];
+  $("knowledge").placeholder = t[3];
+  if (job !== "answer") { $("model").value = "strong"; }
+  $("model").disabled = job !== "answer";
+}
+$("job").addEventListener("change", function () { applyJob(); schedulePlan(0); });
 function fill(ex) {
   $("bot_name").value = ex.bot_name;
   $("company").value = ex.company;
@@ -697,6 +735,8 @@ function fill(ex) {
   $("model").value = ex.model;
   $("budget").value = ex.monthly_budget;
   $("knowledge").value = ex.knowledge;
+  $("job").value = ex.job || "answer";
+  applyJob();
   if (ex.provider) { $("provider").value = ex.provider; }
   updateCount();
   schedulePlan(0);
@@ -874,11 +914,15 @@ async function improvePanel(bot, row) {
   function h(text) { var e = document.createElement("h3"); e.textContent = text; box.append(e); }
   function note(text) { var e = document.createElement("div"); e.className = "sub small"; e.textContent = text; box.append(e); }
 
+  var lineByKey = {}, pendingFix = [];
   h("Questions it couldn't answer (" + rep.gaps.length + ")");
-  if (!rep.gaps.length) note("None yet. When a customer asks something your documents don't cover, it appears here.");
+  if (!rep.gaps.length) note(rep.job && rep.job !== "answer"
+    ? "Reviews and idea sessions are not logged here. Use the ratings below to see what to improve."
+    : "None yet. When a customer asks something your documents don't cover, it appears here.");
   rep.gaps.forEach(function (g) {
     var line = document.createElement("div");
     line.className = "gap";
+    lineByKey[g.key] = line;
     var q = document.createElement("span");
     q.textContent = g.question;
     var right = document.createElement("span");
@@ -905,6 +949,90 @@ async function improvePanel(bot, row) {
     line.append(q, right);
     box.append(line);
   });
+
+  // Self-fixing: SkyMind reads the company's website and drafts the missing answers, with sources.
+  if (rep.gaps.length) {
+    var fixBox = document.createElement("div");
+    fixBox.className = "fixbox";
+    var ft = document.createElement("div");
+    ft.className = "fixtitle";
+    ft.textContent = "Let SkyMind fix it";
+    var fn = document.createElement("div");
+    fn.className = "sub small";
+    fn.textContent = "Give your website. SkyMind reads it and the related pages it links to, finds the answers to these questions, and drafts new sections with sources. You check the draft before anything is added.";
+    var fr = document.createElement("div");
+    fr.className = "urlrow";
+    var site = document.createElement("input");
+    site.type = "url";
+    site.placeholder = "https://www.yourcompany.com";
+    site.value = rep.website || "";
+    site.setAttribute("aria-label", "Your website");
+    var go = document.createElement("button");
+    go.type = "button";
+    go.className = "primary";
+    go.textContent = "Suggest fix";
+    fr.append(site, go);
+    var out = document.createElement("div");
+    out.className = "fixout small";
+    out.setAttribute("role", "status");
+    fixBox.append(ft, fn, fr, out);
+    box.append(fixBox);
+    go.onclick = async function () {
+      if (!/^https?:\/\//i.test(site.value.trim())) { out.className = "fixout small bad"; out.textContent = "Enter your website address, starting with https://"; return; }
+      go.disabled = true;
+      go.textContent = "Reading your website...";
+      out.className = "fixout small";
+      out.textContent = "Reading pages and looking for answers. This can take up to 30 seconds.";
+      try {
+        var res = await fetch("/bots/" + encodeURIComponent(bot.id) + "/suggest-fix", {
+          method: "POST",
+          headers: ownerHeaders(bot, { "Content-Type": "application/json" }),
+          body: JSON.stringify({ url: site.value.trim() })
+        });
+        var d = await res.json();
+        if (!res.ok) { out.className = "fixout small bad"; out.textContent = typeof d.detail === "string" ? d.detail : "Could not suggest a fix."; return; }
+        out.replaceChildren();
+        function line(label, items, cls) {
+          if (!items.length) return;
+          var p = document.createElement("div");
+          if (cls) p.className = cls;
+          var b = document.createElement("strong"); b.textContent = label + " ";
+          p.append(b, document.createTextNode(items.join("; ")));
+          out.append(p);
+        }
+        var pages = document.createElement("div");
+        var pb = document.createElement("strong"); pb.textContent = "Read " + d.pages.length + (d.pages.length === 1 ? " page: " : " pages: ");
+        pages.append(pb);
+        d.pages.forEach(function (pg, i) {
+          var a = document.createElement("a");
+          a.href = pg.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+          a.textContent = pg.title || pg.url;
+          pages.append(a);
+          if (i < d.pages.length - 1) pages.append(document.createTextNode(", "));
+        });
+        out.append(pages);
+        line("Found answers for:", d.found.map(function (f) { return f.question; }), "good");
+        line("Not on these pages:", d.not_found, "warn");
+        if (d.draft) {
+          ta.value = (ta.value ? ta.value + "\n\n" : "") + d.draft;
+          ta.style.minHeight = "280px";
+          pendingFix = d.found.map(function (f) { return f.key; });
+          var tip = document.createElement("div");
+          tip.textContent = (d.used_ai ? "Drafted by " + d.model + " from these pages. " : "Matching passages from these pages. ") +
+            "Check the draft in the box below, edit anything, then click Add to documents.";
+          out.append(tip);
+          ta.scrollIntoView({ behavior: "smooth", block: "center" });
+          ta.classList.add("flash");
+          setTimeout(function () { ta.classList.remove("flash"); }, 1600);
+        } else {
+          var none = document.createElement("div");
+          none.textContent = "No answers found on those pages. Try a more specific page, like your FAQ or help page.";
+          out.append(none);
+        }
+      } catch (e) { out.className = "fixout small bad"; out.textContent = "Could not reach the server."; }
+      finally { go.disabled = false; go.textContent = "Suggest fix"; }
+    };
+  }
 
   var fb = rep.feedback;
   h("Answers rated not helpful (" + fb.not_helpful + " of " + (fb.helpful + fb.not_helpful) + " ratings)");
@@ -969,8 +1097,17 @@ async function improvePanel(bot, row) {
       var d = await res.json();
       if (!res.ok) { msg.className = "small bad"; msg.textContent = typeof d.detail === "string" ? d.detail : "Could not add."; return; }
       ta.value = "";
+      var fixedNow = pendingFix.slice();
+      pendingFix = [];
+      for (var i = 0; i < fixedNow.length; i++) {
+        try {
+          await fetch("/bots/" + encodeURIComponent(bot.id) + "/gaps?question=" + encodeURIComponent(fixedNow[i]), { method: "DELETE", headers: ownerHeaders(bot) });
+          if (lineByKey[fixedNow[i]]) lineByKey[fixedNow[i]].remove();
+        } catch (e) {}
+      }
       msg.className = "small good";
-      msg.textContent = "Added " + d.added + (d.added === 1 ? " section" : " sections") + ". The bot now has " + d.sections + ". Ask it again to check.";
+      msg.textContent = "Added " + d.added + (d.added === 1 ? " section" : " sections") + ". The bot now has " + d.sections + "." +
+        (fixedNow.length ? " Marked " + fixedNow.length + " question" + (fixedNow.length === 1 ? "" : "s") + " fixed." : "") + " Ask it again to check.";
     } catch (e) { msg.className = "small bad"; msg.textContent = "Could not reach the server."; }
   };
   act.append(add, msg);
@@ -1291,7 +1428,18 @@ body { background: var(--bg); }
 @keyframes blink { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
 .composer { padding: 12px 20px 8px; border-top: 1px solid var(--line); background: var(--surface); }
 .inputrow { display: flex; gap: 8px; }
-.inputrow input { flex: 1; font-size: 15px; padding: 12px 14px; border-radius: 12px; }
+.inputrow textarea { flex: 1; font-size: 15px; padding: 12px 14px; border-radius: 12px; min-height: 48px; max-height: 40vh; resize: none; overflow-y: auto; }
+.inputrow textarea.code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13.5px; min-height: 150px; resize: vertical; }
+.inputrow button { align-self: flex-end; min-height: 48px; }
+.starters { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+.starters button { font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+.hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.jobtag { display: inline-block; margin-left: 8px; font-size: 11.5px; font-weight: 650; padding: 2px 8px; border-radius: 999px; background: var(--zenith-soft); color: var(--zenith); vertical-align: 2px; }
+.chat.wide .bubble { max-width: 100%; }
+.bubble pre { white-space: pre; overflow-x: auto; margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; line-height: 1.45; }
+.msg.user .bubble pre { background: rgba(0,0,0,.18); border-color: transparent; color: inherit; }
+.bubble code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .92em; }
+.bubble :not(pre) > code { padding: 1px 5px; border-radius: 5px; background: var(--bg); }
 .inputrow button { border-radius: 12px; padding: 0 20px; }
 .powered { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
 .powered .logo { width: 14px; height: 14px; }
@@ -1304,7 +1452,7 @@ body { background: var(--bg); }
 """
 
 CHAT_BODY = r"""
-<div class="chat">
+<div class="chat" id="chatbox">
   <header class="top">
     <div class="avatar" id="avatar" aria-hidden="true">?</div>
     <div class="grow">
@@ -1316,11 +1464,13 @@ CHAT_BODY = r"""
   </header>
   <div class="log" id="log" aria-live="polite"></div>
   <div class="composer">
+    <div class="starters" id="starters" hidden></div>
     <form class="inputrow" id="form">
       <label for="msg" style="position:absolute;left:-9999px">Your question</label>
-      <input id="msg" placeholder="Ask a question..." autocomplete="off" maxlength="4000">
+      <textarea id="msg" rows="1" placeholder="Ask a question..." autocomplete="off" maxlength="4000"></textarea>
       <button id="send" class="primary" type="submit">Send</button>
     </form>
+    <div class="hint" id="hint" hidden></div>
     <div class="powered">""" + LOGO_SVG + r"""Powered by <a href="/" target="_blank" rel="noopener">SkyMind</a></div>
   </div>
 </div>
@@ -1330,6 +1480,67 @@ CHAT_JS = r"""
 var $ = function (id) { return document.getElementById(id); };
 var botId = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
 var greeting = "Hello! How can I help?";
+var JOB = "answer";
+var SAMPLE_CODE = [
+  "import requests",
+  "",
+  "API_KEY = \"sk-live-4f9a8b7c6d5e4f3a2b1c\"",
+  "",
+  "def get_order(db, order_id):",
+  "    cur = db.cursor()",
+  "    cur.execute(f\"SELECT * FROM orders WHERE id = {order_id}\")",
+  "    return cur.fetchone()",
+  "",
+  "def total_with_discount(price: float, discount_pct):",
+  "    # TODO: support coupon codes",
+  "    try:",
+  "        rate = requests.get(\"https://partner.example/rates\").json()",
+  "        return price * (1 - discount_pct / 100) * rate[\"tax\"]",
+  "    except:",
+  "        print(\"something failed\")"
+].join("\n");
+var STARTERS = {
+  code_review: [["Try sample code with bugs", SAMPLE_CODE, false], ["What are the security rules?", "What are the security rules?", true]],
+  ideas: [["Get more first-time campers", "How can we sell more to first-time campers?", true],
+          ["Cut tent returns", "Give me ideas to reduce tent returns.", true],
+          ["Bring customers back", "How do we get customers to buy again?", true]]
+};
+function setupJob(bot) {
+  JOB = bot.job || "answer";
+  var box = $("msg");
+  box.maxLength = bot.max_message || 4000;
+  if (JOB !== "answer") {
+    var tag = document.createElement("span");
+    tag.className = "jobtag";
+    tag.textContent = bot.job_label;
+    $("title").append(tag);
+  }
+  if (JOB === "code_review") {
+    $("chatbox").classList.add("wide");
+    box.classList.add("code");
+    box.rows = 8;
+    box.placeholder = "Paste code to review...";
+    $("hint").textContent = "Ctrl+Enter (or Cmd+Enter) to send. Enter adds a new line.";
+    $("hint").hidden = false;
+  } else if (JOB === "ideas") {
+    box.placeholder = "Describe a goal or problem...";
+  }
+  var list = STARTERS[JOB] || [];
+  list.forEach(function (s) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = s[0];
+    btn.onclick = function () { box.value = s[1]; grow(); if (s[2]) { send(); } else { box.focus(); } };
+    $("starters").append(btn);
+  });
+  $("starters").hidden = list.length === 0;
+}
+function grow() {
+  var box = $("msg");
+  if (JOB === "code_review") return;  // fixed tall box, user can resize
+  box.style.height = "auto";
+  box.style.height = Math.min(box.scrollHeight + 2, window.innerHeight * 0.4) + "px";
+}
 var busy = false;
 
 function newSession() {
@@ -1353,12 +1564,48 @@ function chip(text, cls) {
   return c;
 }
 
+// Safe formatting for replies: ```code blocks```, **bold**, `code` and # headings.
+// Everything is built with text nodes (never innerHTML), so model output can't inject HTML.
+function inline(parent, text) {
+  text.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/).forEach(function (part) {
+    if (!part) return;
+    if (part.slice(0, 2) === "**" && part.slice(-2) === "**" && part.length > 4) {
+      var st = document.createElement("strong"); st.textContent = part.slice(2, -2); parent.append(st);
+    } else if (part.charAt(0) === "`" && part.slice(-1) === "`" && part.length > 2) {
+      var c = document.createElement("code"); c.textContent = part.slice(1, -1); parent.append(c);
+    } else {
+      parent.append(document.createTextNode(part));
+    }
+  });
+}
+function renderRich(el, text) {
+  var parts = text.split(/```[\w+-]*\n?/);
+  parts.forEach(function (part, i) {
+    if (i % 2 === 1) {
+      var pre = document.createElement("pre"), code = document.createElement("code");
+      code.textContent = part.replace(/\n$/, "");
+      pre.append(code); el.append(pre);
+    } else {
+      part = part.replace(/^\n+|\n+$/g, "");
+      part.split("\n").forEach(function (line, j, all) {
+        var h = line.match(/^#{1,4}\s+(.*)/);
+        if (h) { var st = document.createElement("strong"); st.textContent = h[1]; el.append(st); }
+        else { inline(el, line); }
+        if (j < all.length - 1) el.append(document.createTextNode("\n"));
+      });
+    }
+  });
+}
 function addMessage(text, who, data) {
   var row = document.createElement("div");
   row.className = "msg " + who;
   var b = document.createElement("div");
   b.className = "bubble";
-  b.textContent = text;
+  if (who === "bot" && data) { renderRich(b, text); }
+  else if (who === "user" && JOB === "code_review" && text.indexOf("\n") >= 0) {
+    var pre = document.createElement("pre"), code = document.createElement("code");
+    code.textContent = text; pre.append(code); b.append(pre);
+  } else { b.textContent = text; }
   if (data) {
     var meta = document.createElement("div");
     meta.className = "meta";
@@ -1366,6 +1613,9 @@ function addMessage(text, who, data) {
     meta.append(chip(data.latency_ms < 1000 ? Math.round(data.latency_ms) + " ms" : (data.latency_ms / 1000).toFixed(1) + " s"));
     if (data.history_messages) { meta.append(chip("remembers " + data.history_messages + " messages")); }
     (data.sources || []).forEach(function (s) { meta.append(chip("Source: " + s)); });
+    if (data.job && data.job !== "answer" && data.context_sections) {
+      meta.append(chip((data.job === "code_review" ? "Checked against " : "Used ") + data.context_sections + " document sections"));
+    }
     if (data.budget_guard) { meta.append(chip("Budget guard on")); }
     b.append(meta);
     if (data.answer_id) { b.append(rateRow(data.answer_id)); }
@@ -1439,6 +1689,7 @@ async function init() {
     $("sub").textContent = bot.company;
     $("avatar").textContent = (bot.name || "?").trim().charAt(0).toUpperCase();
     greeting = bot.greeting;
+    setupJob(bot);
     var me = await skyReady;
     var restricted = bot.access && bot.access.mode === "google";
     if (!restricted && !me.user) { $("authbox").hidden = true; }
@@ -1474,6 +1725,7 @@ async function send() {
   if (!text || busy) return;
   busy = true;
   $("msg").value = "";
+  grow();
   addMessage(text, "user", null);
   var wait = addTyping();
   $("send").disabled = true;
@@ -1501,6 +1753,12 @@ async function send() {
 }
 
 $("form").onsubmit = function (e) { e.preventDefault(); send(); };
+$("msg").addEventListener("input", grow);
+$("msg").addEventListener("keydown", function (e) {
+  if (e.key !== "Enter" || e.isComposing) return;
+  var sendNow = JOB === "code_review" ? (e.ctrlKey || e.metaKey) : !e.shiftKey;
+  if (sendNow) { e.preventDefault(); send(); }
+});
 $("newchat").onclick = function () {
   session = newSession();
   $("log").replaceChildren();

@@ -39,8 +39,10 @@ from starlette.concurrency import run_in_threadpool
 import auth
 import embeddings
 import examples
+import fixer
 import improve
 import ingest
+import jobs
 import knowledge
 import pages
 import planner
@@ -248,6 +250,9 @@ def public_info(bot: dict) -> dict:
         "company": bot["company"],
         "greeting": bot["greeting"],
         "access": auth.public_access(bot.get("access")),
+        "job": bot.get("job", "answer"),
+        "job_label": jobs.get(bot.get("job")).get("label"),
+        "max_message": jobs.get(bot.get("job"))["max_message"],
     }
 
 
@@ -287,6 +292,11 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
     if len(text) > MAX_KNOWLEDGE_CHARS:
         raise HTTPException(422, f"Documents are too long (limit {MAX_KNOWLEDGE_CHARS:,} characters).")
 
+    job = str(body.get("job") or "answer").strip().lower()
+    if job not in jobs.JOBS:
+        raise HTTPException(422, f"job must be one of: {', '.join(jobs.JOBS)}")
+    if jobs.get(job)["tier"]:  # reviews and ideas always use the strong model, so plan the cost for it
+        body = {**body, "model": jobs.get(job)["tier"]}
     try:
         spec = planner.parse_spec(body)
         result = planner.plan(spec)
@@ -310,7 +320,7 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
     if not chunks:
         raise HTTPException(422, "Could not read any text from the documents.")
 
-    greeting = str(body.get("greeting") or f"Hi! I'm the {name} assistant for {company}. How can I help?").strip()[:200]
+    greeting = str(body.get("greeting") or jobs.get(job)["greeting"].format(name=name, company=company)).strip()[:200]
     bot_id = fixed_id or f"{slugify(name)}-{secrets.token_hex(4)}"  # hard to guess
     owner_key = secrets.token_urlsafe(24)  # shown once to the company that deployed it
     notes = list(result["notes"])
@@ -332,6 +342,7 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         "owner_email": owner_email,
         "access": access,
         "search": search,
+        "job": job,
     }
     if search == "hybrid":  # embed before saving, so a failure leaves nothing half-made
         await app.state.redis.set(vectors_key(bot_id), json.dumps(await embed_or_fail(chunks)))
@@ -350,6 +361,7 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         "owner_key": owner_key,
         "owner_email": owner_email,
         "access": access,
+        "job": job,
     }
 
 
@@ -531,6 +543,8 @@ async def improve_report(bot_id: str, request: Request):
         "sections": [c["title"] for c in bot["chunks"]],
         "characters": sum(len(c["text"]) for c in bot["chunks"]),
         "max_characters": MAX_KNOWLEDGE_CHARS,
+        "website": bot.get("website", ""),
+        "job": bot.get("job", "answer"),
     }
 
 
@@ -541,6 +555,74 @@ async def clear_gaps(bot_id: str, request: Request, question: str | None = None)
     await require_owner(request, bot)
     await improve.clear_gap(app.state.redis, bot_id, question)
     return {"cleared": question or "all"}
+
+
+FIX_LIMIT_PER_HOUR = int(os.getenv("FIX_LIMIT_PER_HOUR", "10"))
+
+
+class SuggestFix(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+    questions: list[str] | None = Field(default=None, max_length=fixer.MAX_QUESTIONS)
+
+
+@app.post("/bots/{bot_id}/suggest-fix")
+async def suggest_fix(bot_id: str, req: SuggestFix, request: Request):
+    """Draft the missing information for the questions a bot couldn't answer, from the company's website.
+
+    Reads the given page and the related pages it links to on the same site, finds passages that answer
+    each question and drafts new sections with sources. Nothing is added until the owner approves it.
+    """
+    bot = await load_bot(bot_id)
+    await require_owner(request, bot)
+    r = app.state.redis
+    if not await is_admin(request) and await rate_limited(f"fix:{bot_id}", FIX_LIMIT_PER_HOUR, window_s=3600):
+        raise HTTPException(429, f"Suggest fix can run {FIX_LIMIT_PER_HOUR} times an hour per bot. Please try again later.")
+    gaps = await improve.list_gaps(r, bot_id, fixer.MAX_QUESTIONS)
+    questions = req.questions or [g["question"] for g in gaps]
+    questions = list(dict.fromkeys(q.strip()[:300] for q in questions if q.strip()))[:fixer.MAX_QUESTIONS]
+    if not questions:
+        raise HTTPException(422, "There are no unanswered questions to fix yet.")
+    start = time.perf_counter()
+    try:
+        pages, errors = await fixer.gather_pages(req.url, questions)
+    except ingest.IngestError as err:
+        raise HTTPException(422, str(err))
+    evidence = fixer.find_evidence(pages, questions)
+
+    provider, used_ai, model = bot_provider(bot), False, "extractive"
+    if provider != "mock" and any(evidence.values()):
+        system, user = fixer.draft_prompt(bot["company"], evidence)
+        try:
+            result = await providers.call(app.state.http, provider, "strong", system,
+                                          [{"role": "user", "content": user}], 1500, max(LLM_TIMEOUT_S, 45))
+            draft, missing = fixer.split_not_found(result["text"], questions)
+            used_ai, model = bool(draft), result["model"]
+            await record_stats(bot_id, "strong", result["input_tokens"], result["output_tokens"],
+                               round((time.perf_counter() - start) * 1000, 1), "suggest-fix", provider)
+        except providers.ProviderError as err:
+            log.warning("Suggest fix: model failed, using passages instead: %s", err)
+    if not used_ai:
+        draft = fixer.extractive_draft(evidence)
+        missing = [q for q, hits in evidence.items() if not hits]
+
+    raw = await r.get(bot_key(bot_id))  # remember the site for next time
+    if raw:
+        stored = json.loads(raw)
+        stored["website"] = req.url.strip()[:2000]
+        await r.set(bot_key(bot_id), json.dumps(stored))
+        app.state.bot_cache.pop(bot_id, None)
+
+    keys = {g["question"]: g["key"] for g in gaps}
+    missing_set = set(missing)
+    return {
+        "draft": draft,
+        "found": [{"question": q, "key": keys.get(q) or improve._normalise(q)[1]} for q in questions if q not in missing_set],
+        "not_found": [q for q in missing],
+        "pages": [{"url": p["url"], "title": p["title"]} for p in pages],
+        "errors": errors[:5],
+        "used_ai": used_ai,
+        "model": model,
+    }
 
 
 class KnowledgeUpdate(BaseModel):
@@ -647,7 +729,7 @@ async def import_url(req: UrlImport, request: Request):
 
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_ID_PATTERN)
-    message: str = Field(min_length=1, max_length=4000)
+    message: str = Field(min_length=1, max_length=12000)  # each job sets its own limit (jobs.py)
 
 
 class ChatResponse(BaseModel):
@@ -664,6 +746,8 @@ class ChatResponse(BaseModel):
     budget_guard: bool = False
     answer_id: str = ""        # use it to rate this answer: POST /bots/{id}/feedback
     unanswered: bool = False   # the bot said it couldn't answer; logged for the company
+    job: str = "answer"
+    context_sections: int = 0  # how many document sections the model was given
 
 
 async def load_history(bot_id: str, session_id: str) -> list[dict]:
@@ -706,6 +790,12 @@ async def record_stats(
 
 def build_system_prompt(bot: dict, sources: list[dict]) -> str:
     context = "\n\n".join(f"[{s['title']}]\n{s['text']}" for s in sources)
+    job = bot.get("job", "answer")
+    if job != "answer":
+        if not context and bot.get("chunks"):
+            first = bot["chunks"][0]
+            context = f"[{first['title']}]\n{first['text']}"
+        return jobs.system_prompt(job, bot["company"], context or "(no documents)")
     if not context:
         # Nothing matched (often different words, e.g. "products" vs "sells tents"). Give the model the
         # company's first section as background so general questions can still be answered.
@@ -736,6 +826,14 @@ def build_system_prompt(bot: dict, sources: list[dict]) -> str:
 def mock_answer(bot: dict, message: str, sources: list[dict], tier: str) -> str:
     if router.is_greeting(message):
         return f"[mock-{tier}] {bot['greeting']}"
+    job = bot.get("job", "answer")
+    if job == "code_review" and looks_like_code(message):
+        def find_rule(words: str):
+            hit = knowledge.retrieve(bot["_index"], bot["chunks"], words, k=1, method="bm25", min_score=0.5)
+            return hit[0]["title"] if hit else None
+        return f"[mock-{tier}] " + jobs.mock_review(message, find_rule)
+    if job == "ideas":
+        return f"[mock-{tier}] " + jobs.mock_ideas(bot["company"], sources or bot["chunks"])
     if sources:
         top = sources[0]
         snippet = top["text"]
@@ -743,6 +841,10 @@ def mock_answer(bot: dict, message: str, sources: list[dict], tier: str) -> str:
             snippet = snippet[:500].rsplit(" ", 1)[0] + "..."
         return f"[mock-{tier}] From {bot['company']}'s documents ({top['title']}): {snippet}"
     return f"[mock-{tier}] I don't have that in {bot['company']}'s documents. Please contact {bot['company']} directly."
+
+
+def looks_like_code(text: str) -> bool:
+    return "\n" in text.strip() or bool(re.search(r"[(){};=]|^\s*(def|class|import|function|const|let|var)\b", text))
 
 
 def bot_provider(bot: dict) -> str:
@@ -770,7 +872,8 @@ async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sour
     for attempt, use_tier in enumerate(plan):
         try:
             result = await providers.call(
-                app.state.http, provider, use_tier, system, messages, MAX_ANSWER_TOKENS, LLM_TIMEOUT_S
+                app.state.http, provider, use_tier, system, messages,
+                jobs.get(bot.get("job"))["max_tokens"] or MAX_ANSWER_TOKENS, LLM_TIMEOUT_S
             )
         except providers.ProviderError as err:
             # Full details go to the server log only; the browser gets a plain message.
@@ -817,12 +920,19 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
     if spent_so_far >= max(bot["llm_budget"], 1.0) * HARD_STOP_FACTOR:
         raise HTTPException(429, f"{bot['company']}'s assistant has reached its monthly limit. Please contact {bot['company']} directly.")
     remembers = bot["spec"]["memory"] != ["none"]
+    job = bot.get("job", "answer")
+    job_cfg = jobs.get(job)
+    if len(req.message) > job_cfg["max_message"]:
+        raise HTTPException(422, f"Messages to this assistant can be at most {job_cfg['max_message']:,} characters.")
 
     history = await load_history(bot_id, req.session_id) if remembers else []
 
     # Model routing, with a budget guard: once the bot has used its monthly LLM budget,
     # the strong model is paused and everything goes to the cheap model.
-    tier, reason = router.pick_tier(req.message, bot["spec"]["model"])
+    if job_cfg["tier"] and not router.is_greeting(req.message):
+        tier, reason = job_cfg["tier"], f"{job_cfg['label'].lower()} jobs always use the {job_cfg['tier']} model"
+    else:
+        tier, reason = router.pick_tier(req.message, bot["spec"]["model"])
     spent = float(await r.hget(stats_key(bot_id), "actual_cost_usd") or 0)
     guard = spent >= bot["llm_budget"]
     if guard and tier == "strong":
@@ -835,8 +945,15 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
             query_vec = await embeddings.embed_query(app.state.http, req.message)
         except embeddings.EmbeddingError as err:  # fall back to word search; chat keeps working
             log.warning("Query embedding failed, using BM25: %s", err)
-    sources = knowledge.retrieve(bot["_index"], bot["chunks"], req.message, k=3, method=bot.get("search", "keyword"),
-                                 query_vec=query_vec, vectors=bot.get("_vectors"))
+    if jobs.wants_all_documents(job, bot["chunks"]):
+        sources = bot["chunks"]  # reviews and ideas need all the rules / goals at once
+    else:
+        wide = job != "answer"  # reviews and ideas: take loosely related sections too, never none
+        sources = knowledge.retrieve(bot["_index"], bot["chunks"], req.message, k=jobs.WIDE_K if wide else 3,
+                                     min_score=0.5 if wide and bot.get("search") != "hybrid" else None,
+                                     method=bot.get("search", "keyword"), query_vec=query_vec, vectors=bot.get("_vectors"))
+        if wide and not sources:
+            sources = bot["chunks"][:jobs.WIDE_K]
     result = await call_llm(bot, history, req.message, tier, sources)
     if result.get("fallback"):
         tier = result["tier"]
@@ -848,7 +965,7 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
         bot_id, tier, result["input_tokens"], result["output_tokens"], latency_ms, req.session_id, bot_provider(bot)
     )
     # Improvement loop: log questions the bot couldn't answer, and keep the answer so it can be rated.
-    unanswered = improve.is_unanswered(result["text"]) and not router.is_greeting(req.message)
+    unanswered = job_cfg["log_gaps"] and improve.is_unanswered(result["text"]) and not router.is_greeting(req.message)
     if unanswered:
         await improve.log_gap(r, bot_id, req.message)
     answer_id = await improve.remember_answer(r, bot_id, req.session_id, req.message, result["text"], result["model"])
@@ -862,8 +979,10 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
         input_tokens=result["input_tokens"],
         output_tokens=result["output_tokens"],
         cost_usd=round(cost, 8),
-        sources=[s["title"] for s in sources],
+        sources=[s["title"] for s in sources] if job == "answer" else [],
         budget_guard=guard,
+        job=job,
+        context_sections=len(sources),
         answer_id=answer_id,
         unanswered=unanswered,
     )
@@ -1031,6 +1150,7 @@ async def my_bots(request: Request):
                 "requests": stats["requests"],
                 "saved_percent": stats["saved_percent"],
                 "quality": await quality_counts(bot["id"]),
+                "website": bot.get("website", ""),
             })
     return rows
 

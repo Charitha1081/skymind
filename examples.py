@@ -86,6 +86,43 @@ Email support@acme.example or call 555-0100, Monday to Friday 8 AM to 8 PM Centr
 Gift cards never expire and can be used online or in stores. Promo codes cannot be combined, and they do not apply to gift card purchases.
 """
 
+ACME_ENGINEERING_RULES = """
+## About these rules
+Acme Outdoor Gear (a fictional company) engineering rules for all Python code in the online store. Reviews cite these rules by section title.
+
+## Security rules
+Never write API keys, passwords or tokens in code; read them from environment variables (os.environ) and keep them in the secrets manager. A key that was ever committed must be rotated the same day. Never build SQL with string formatting or +; always use parameterised queries. Never call eval() or exec() on anything a user can influence. Validate every input from customers (order IDs, quantities, coupon codes) before using it.
+
+## Error handling and logging
+No bare except: catch the specific exception you expect. Never silently ignore an error; log it with the logging module, not print(). Customer-facing errors must not show stack traces or internal details.
+
+## HTTP calls and performance
+Every HTTP call needs a timeout (10 seconds for partner APIs). Never make network or database calls inside a loop over orders or products; batch them. Cache prices for at most 5 minutes.
+
+## Python style
+Follow PEP 8 with a maximum line length of 100 characters. Use type hints on public functions and a one-line docstring explaining what the function does. Names are snake_case for functions and variables. Keep functions under 50 lines. Compare with None using "is None". No TODO or FIXME in merged code: finish it or link a ticket.
+
+## Money and prices
+Store and calculate money as integer cents or Decimal, never float. Round only when displaying. Discounts can never make a price negative.
+
+## Testing
+Every bug fix comes with a test that fails before the fix. Use pytest. New code in checkout, payments or shipping needs tests for the normal case, an empty or zero case, and an invalid input case.
+
+## Pull requests
+Keep pull requests under 400 changed lines. Describe what changed and why, and link the ticket. At least one reviewer must approve; checkout and payment changes need two.
+"""
+
+ACME_GOALS = """
+## Goals for 2027
+Acme Outdoor Gear wants to grow repeat customers by 20%, sell more to first-time campers, and cut product returns, which are mostly tents returned because they were the wrong size. The marketing budget is small, so ideas should be cheap to test.
+
+## Customers
+Most customers are 25 to 45, buy online, and camp a few weekends a year. A growing group are first-time campers who don't know what gear they need. Customers often ask which tent size fits their group.
+
+## Limits
+Acme has two stores (Denver and Austin), a small support team, and no mobile app. Any new idea must work with the existing website and stores.
+"""
+
 EXAMPLES = [
     {
         "key": "unt",
@@ -108,5 +145,29 @@ EXAMPLES = [
         "model": "auto",
         "monthly_budget": "$150",
         "knowledge": ACME_KNOWLEDGE.strip(),
+    },
+    {
+        "key": "acme-review",
+        "bot_name": "Acme Code Reviewer",
+        "company": "Acme Outdoor Gear",
+        "job": "code_review",
+        "expected_concurrent_users": 20,
+        "latency_target_p95": "15s",
+        "memory": "window",
+        "model": "strong",
+        "monthly_budget": "$150",
+        "knowledge": ACME_ENGINEERING_RULES.strip(),
+    },
+    {
+        "key": "acme-ideas",
+        "bot_name": "Acme Idea Partner",
+        "company": "Acme Outdoor Gear",
+        "job": "ideas",
+        "expected_concurrent_users": 20,
+        "latency_target_p95": "15s",
+        "memory": "window",
+        "model": "strong",
+        "monthly_budget": "$100",
+        "knowledge": (ACME_KNOWLEDGE.strip() + "\n\n" + ACME_GOALS.strip()),
     },
 ]
