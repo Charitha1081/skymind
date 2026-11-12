@@ -504,10 +504,22 @@ DEPLOY_CSS = r"""
 .botrow:first-child { border-top: 0; }
 .botrow .sub { font-size: 13px; }
 
+.urlrow { display: flex; gap: 8px; }
+.urlrow input { flex: 1; min-width: 0; }
 .loginnote { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 18px; border-color: var(--zenith); background: var(--zenith-soft); }
 .accessedit { margin-top: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); width: 100%; }
 .accessedit .row { gap: 0 12px; }
 .botrow .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.improve { margin-top: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); width: 100%; }
+.improve h3 { font-size: 14px; margin: 14px 0 6px; }
+.improve h3:first-child { margin-top: 0; }
+.gap { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.gap:first-of-type { border-top: 0; }
+.gap .n { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.badans { font-size: 13.5px; padding: 8px 0; border-top: 1px solid var(--line); }
+.badans .q { font-weight: 600; }
+.badans .a { color: var(--muted); margin-top: 2px; }
+.improve textarea { min-height: 110px; }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .plan { position: static; }
@@ -551,6 +563,13 @@ DEPLOY_BODY = _header("deploy") + r"""
           <div><label for="provider">AI provider</label>
             <select id="provider"><option value="">Loading...</option></select>
             <div class="hint" id="provider_hint"></div></div>
+          <div><label for="search">Search method</label>
+            <select id="search">
+              <option value="bm25">Words (BM25)</option>
+              <option value="hybrid">Words + meaning (needs Gemini key)</option>
+              <option value="keyword">Simple keywords</option>
+            </select>
+            <div class="hint" id="search_hint">Meaning search also finds answers phrased differently.</div></div>
           <div><label for="model">Model routing</label>
             <select id="model">
               <option value="auto">Auto: cheap for easy, strong for hard</option>
@@ -581,9 +600,14 @@ DEPLOY_BODY = _header("deploy") + r"""
 
       <section class="panel" aria-labelledby="docs-title">
         <h2 class="step-title" id="docs-title"><b>3</b>What should it know?</h2>
-        <p class="sub" style="margin:0">Paste FAQs, policies or product info, or upload a text file. Lines starting with # or ## become section titles.</p>
-        <label for="file">Upload a .txt, .md or .csv file</label>
-        <input id="file" type="file" accept=".txt,.md,.markdown,.csv">
+        <p class="sub" style="margin:0">Paste FAQs, policies or product info, upload files, or import web pages. Each adds to the documents below. Lines starting with # or ## become section titles.</p>
+        <div class="row">
+          <div><label for="file">Upload PDF, Word, text or CSV files</label>
+            <input id="file" type="file" multiple accept=".pdf,.docx,.txt,.md,.markdown,.csv"></div>
+          <div><label for="url">Import a web page</label>
+            <div class="urlrow"><input id="url" type="url" placeholder="https://www.example.com/faq"><button id="urlbtn" type="button">Import</button></div></div>
+        </div>
+        <div id="import_msg" class="small" role="status" style="margin-top:6px"></div>
         <label for="knowledge">Documents <span id="count" class="sub">0 characters</span></label>
         <textarea id="knowledge" placeholder="## Returns&#10;Items can be returned within 30 days of delivery..."></textarea>
         <div class="deploybar">
@@ -767,6 +791,10 @@ async function loadProviders() {
       sel.append(o);
     });
     sel.value = d.default;
+    var hy = $("search").querySelector('option[value="hybrid"]');
+    hy.disabled = !d.embeddings;
+    if (!d.embeddings) { $("search_hint").textContent = "Meaning search needs GEMINI_API_KEY on the server."; }
+    $("search").value = d.embeddings && d.default_search === "hybrid" ? "hybrid" : (d.default_search === "keyword" ? "keyword" : "bm25");
     providerHint();
     schedulePlan(0);
   } catch (e) { $("provider_hint").textContent = "Could not load providers."; }
@@ -827,6 +855,126 @@ async function deleteMine(bot) {
     if (res.ok || res.status === 404) { saveMyBots(myBots().filter(function (b) { return b.id !== bot.id; })); }
   } catch (e) {}
   refreshBots();
+}
+
+async function improvePanel(bot, row) {
+  var old = row.querySelector(".improve");
+  if (old) { old.remove(); return; }
+  var box = document.createElement("div");
+  box.className = "improve";
+  box.textContent = "Loading...";
+  row.append(box);
+  var rep;
+  try {
+    var res = await fetch("/bots/" + encodeURIComponent(bot.id) + "/improve", { headers: ownerHeaders(bot) });
+    rep = await res.json();
+    if (!res.ok) { box.textContent = typeof rep.detail === "string" ? rep.detail : "Could not load."; return; }
+  } catch (e) { box.textContent = "Could not reach the server."; return; }
+  box.replaceChildren();
+  function h(text) { var e = document.createElement("h3"); e.textContent = text; box.append(e); }
+  function note(text) { var e = document.createElement("div"); e.className = "sub small"; e.textContent = text; box.append(e); }
+
+  h("Questions it couldn't answer (" + rep.gaps.length + ")");
+  if (!rep.gaps.length) note("None yet. When a customer asks something your documents don't cover, it appears here.");
+  rep.gaps.forEach(function (g) {
+    var line = document.createElement("div");
+    line.className = "gap";
+    var q = document.createElement("span");
+    q.textContent = g.question;
+    var right = document.createElement("span");
+    right.style.display = "flex";
+    right.style.gap = "8px";
+    right.style.alignItems = "center";
+    var n = document.createElement("span");
+    n.className = "n";
+    n.textContent = "asked " + g.count + (g.count === 1 ? " time" : " times");
+    var fix = document.createElement("button");
+    fix.type = "button";
+    fix.className = "quiet";
+    fix.textContent = "Mark fixed";
+    fix.onclick = async function () {
+      await fetch("/bots/" + encodeURIComponent(bot.id) + "/gaps?question=" + encodeURIComponent(g.key), { method: "DELETE", headers: ownerHeaders(bot) });
+      line.remove();
+    };
+    var use = document.createElement("button");
+    use.type = "button";
+    use.className = "quiet";
+    use.textContent = "Answer it";
+    use.onclick = function () { ta.value += (ta.value ? "\n\n" : "") + "## " + g.question + "\n"; ta.focus(); };
+    right.append(n, use, fix);
+    line.append(q, right);
+    box.append(line);
+  });
+
+  var fb = rep.feedback;
+  h("Answers rated not helpful (" + fb.not_helpful + " of " + (fb.helpful + fb.not_helpful) + " ratings)");
+  if (!fb.recent_not_helpful.length) note("No not-helpful ratings yet.");
+  fb.recent_not_helpful.forEach(function (x) {
+    var d = document.createElement("div");
+    d.className = "badans";
+    var q = document.createElement("div"); q.className = "q"; q.textContent = x.question;
+    var a = document.createElement("div"); a.className = "a"; a.textContent = x.answer.slice(0, 300);
+    d.append(q, a);
+    if (x.comment) { var cm = document.createElement("div"); cm.className = "a"; cm.textContent = "Comment: " + x.comment; d.append(cm); }
+    box.append(d);
+  });
+
+  h("Add information");
+  note("Write the missing answers, upload files or import web pages, then check the text below. Start each topic with ## and a title. Your bot uses it on the next question. Now: " + rep.sections.length + " sections, " + rep.characters.toLocaleString() + " of " + rep.max_characters.toLocaleString() + " characters.");
+  var imp = document.createElement("div");
+  imp.className = "row";
+  imp.style.marginTop = "8px";
+  var fileIn = document.createElement("input");
+  fileIn.type = "file";
+  fileIn.multiple = true;
+  fileIn.accept = ".pdf,.docx,.txt,.md,.markdown,.csv";
+  fileIn.setAttribute("aria-label", "Upload files to add");
+  var urlWrap = document.createElement("div");
+  urlWrap.className = "urlrow";
+  var urlIn = document.createElement("input");
+  urlIn.type = "url";
+  urlIn.placeholder = "https://www.example.com/faq";
+  urlIn.setAttribute("aria-label", "Web page to import");
+  var urlBtn = document.createElement("button");
+  urlBtn.type = "button";
+  urlBtn.textContent = "Import";
+  urlWrap.append(urlIn, urlBtn);
+  imp.append(fileIn, urlWrap);
+  var impMsg = document.createElement("div");
+  impMsg.className = "small";
+  box.append(imp, impMsg);
+  fileIn.onchange = async function () { await importFiles(fileIn.files, ta, impMsg); fileIn.value = ""; };
+  urlBtn.onclick = async function () { if (await importUrl(urlIn.value, ta, impMsg)) urlIn.value = ""; };
+  var ta = document.createElement("textarea");
+  ta.style.marginTop = "8px";
+  ta.placeholder = "## Kayaks\nWe sell inflatable kayaks for $299.";
+  ta.setAttribute("aria-label", "Information to add");
+  var act = document.createElement("div");
+  act.className = "actions";
+  act.style.marginTop = "10px";
+  var add = document.createElement("button");
+  add.type = "button";
+  add.className = "primary";
+  add.textContent = "Add to documents";
+  var msg = document.createElement("span");
+  msg.className = "small";
+  add.onclick = async function () {
+    if (!ta.value.trim()) { msg.className = "small bad"; msg.textContent = "Write something to add first."; return; }
+    try {
+      var res = await fetch("/bots/" + encodeURIComponent(bot.id) + "/knowledge", {
+        method: "POST",
+        headers: ownerHeaders(bot, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ text: ta.value, mode: "append" })
+      });
+      var d = await res.json();
+      if (!res.ok) { msg.className = "small bad"; msg.textContent = typeof d.detail === "string" ? d.detail : "Could not add."; return; }
+      ta.value = "";
+      msg.className = "small good";
+      msg.textContent = "Added " + d.added + (d.added === 1 ? " section" : " sections") + ". The bot now has " + d.sections + ". Ask it again to check.";
+    } catch (e) { msg.className = "small bad"; msg.textContent = "Could not reach the server."; }
+  };
+  act.append(add, msg);
+  box.append(ta, act);
 }
 
 function accessEditor(bot, row) {
@@ -917,7 +1065,7 @@ async function refreshBots() {
       alive.push(b);
       if (r.ok) {
         var u = await r.json();
-        list.push({ id: b.id, name: b.name, company: b.company, key: b.key, access: u.access, requests: u.requests, saved_percent: u.saved_percent });
+        list.push({ id: b.id, name: b.name, company: b.company, key: b.key, access: u.access, requests: u.requests, saved_percent: u.saved_percent, quality: u.quality });
       } else {
         list.push({ id: b.id, name: b.name, company: b.company, key: b.key });
       }
@@ -945,6 +1093,13 @@ async function refreshBots() {
     chipEl.className = "chip" + (bot.access && bot.access.mode === "google" ? " strong" : "");
     chipEl.textContent = accessLabel(bot.access);
     meta.append(chipEl);
+    if (bot.quality) {
+      var q = bot.quality, rated = q.helpful + q.not_helpful;
+      var qc = document.createElement("span");
+      qc.className = "chip";
+      qc.textContent = (rated ? Math.round(100 * q.helpful / rated) + "% helpful" : "no ratings yet") + ", " + q.gaps + " unanswered";
+      meta.append(qc);
+    }
     left.append(name, sub, meta);
     var right = document.createElement("div");
     right.style.display = "flex";
@@ -960,13 +1115,17 @@ async function refreshBots() {
     acc.type = "button";
     acc.textContent = "Access";
     acc.onclick = function () { accessEditor(bot, row); };
+    var imp = document.createElement("button");
+    imp.type = "button";
+    imp.textContent = "Improve";
+    imp.onclick = function () { improvePanel(bot, row); };
     var del = document.createElement("button");
     del.type = "button";
     del.className = "quiet";
     del.textContent = "Delete";
     del.setAttribute("aria-label", "Delete " + bot.name);
     del.onclick = function () { deleteMine(bot); };
-    right.append(a, acc, del);
+    right.append(a, imp, acc, del);
     row.append(left, right);
     box.append(row);
   });
@@ -995,13 +1154,47 @@ function showResult(data) {
 ["users", "latency", "budget"].forEach(function (id) { $(id).addEventListener("input", function () { schedulePlan(); }); });
 ["memory", "model"].forEach(function (id) { $(id).addEventListener("change", function () { schedulePlan(0); }); });
 $("knowledge").oninput = updateCount;
-$("file").onchange = function () {
-  var f = $("file").files[0];
-  if (!f) return;
-  if (f.size > 400000) { $("error").textContent = "That file is too large. Keep documents under about 200,000 characters."; return; }
-  var reader = new FileReader();
-  reader.onload = function () { $("knowledge").value = reader.result; updateCount(); };
-  reader.readAsText(f);
+// ---- importing files and web pages (shared by the deploy form and the Improve panel) ----
+function appendText(ta, text) {
+  ta.value = ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n\n" + text : text;
+  if (ta === $("knowledge")) updateCount();
+}
+function showImport(el, ok, text) { el.className = "small " + (ok ? "good" : "bad"); el.textContent = text; }
+async function importFiles(files, ta, msgEl) {
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    if (f.size > 5000000) { showImport(msgEl, false, f.name + " is larger than 5 MB."); continue; }
+    showImport(msgEl, true, "Reading " + f.name + "...");
+    try {
+      var form = new FormData();
+      form.append("file", f);
+      var res = await fetch("/import/file", { method: "POST", headers: skyHeaders(), body: form });
+      var d = await res.json();
+      if (!res.ok) { showImport(msgEl, false, f.name + ": " + (typeof d.detail === "string" ? d.detail : "could not import.")); continue; }
+      appendText(ta, d.text);
+      showImport(msgEl, true, "Added " + f.name + " (" + d.characters.toLocaleString() + " characters" + (d.truncated ? ", shortened to fit" : "") + ").");
+    } catch (e) { showImport(msgEl, false, "Could not reach the server."); }
+  }
+}
+async function importUrl(url, ta, msgEl) {
+  url = (url || "").trim();
+  if (!url) { showImport(msgEl, false, "Paste a web address first."); return false; }
+  showImport(msgEl, true, "Fetching " + url + "...");
+  try {
+    var res = await fetch("/import/url", { method: "POST", headers: skyHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ url: url }) });
+    var d = await res.json();
+    if (!res.ok) { showImport(msgEl, false, typeof d.detail === "string" ? d.detail : "Could not import that page."); return false; }
+    appendText(ta, d.text);
+    showImport(msgEl, true, "Added \u201c" + d.title + "\u201d (" + d.characters.toLocaleString() + " characters). Check the text before deploying.");
+    return true;
+  } catch (e) { showImport(msgEl, false, "Could not reach the server."); return false; }
+}
+$("file").onchange = async function () {
+  await importFiles($("file").files, $("knowledge"), $("import_msg"));
+  $("file").value = "";
+};
+$("urlbtn").onclick = async function () {
+  if (await importUrl($("url").value, $("knowledge"), $("import_msg"))) $("url").value = "";
 };
 $("copy").onclick = async function () {
   try { await navigator.clipboard.writeText($("chaturl").value); $("copy").textContent = "Copied"; }
@@ -1016,6 +1209,7 @@ $("deploy").onclick = async function () {
   $("result").hidden = true;
   var body = spec();
   body.access = readAccess("access_");
+  body.search = $("search").value;
   body.bot_name = $("bot_name").value;
   body.company = $("company").value;
   body.knowledge = $("knowledge").value;
@@ -1086,6 +1280,10 @@ body { background: var(--bg); }
 .msg.bot .bubble { background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
 .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; white-space: normal; }
 .meta .chip { font-size: 12px; padding: 2px 9px; }
+.rate { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: var(--muted); white-space: normal; }
+.rate button { padding: 3px 8px; font-size: 12px; font-weight: 550; border-radius: 999px; background: transparent; color: var(--muted); gap: 4px; }
+.rate button svg { width: 14px; height: 14px; }
+.rate button:hover { color: var(--ink); border-color: var(--muted); }
 .typing { display: inline-flex; gap: 5px; padding: 4px 2px; }
 .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
 .typing i:nth-child(2) { animation-delay: 0.15s; }
@@ -1170,10 +1368,40 @@ function addMessage(text, who, data) {
     (data.sources || []).forEach(function (s) { meta.append(chip("Source: " + s)); });
     if (data.budget_guard) { meta.append(chip("Budget guard on")); }
     b.append(meta);
+    if (data.answer_id) { b.append(rateRow(data.answer_id)); }
   }
   row.append(b);
   $("log").append(row);
   $("log").scrollTop = $("log").scrollHeight;
+  return row;
+}
+
+var THUMB = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.9 14 10h5.8a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 18.4 22H7V10l4.4-7.5A1.9 1.9 0 0 1 15 5.9Z"/></svg>';
+function rateRow(answerId) {
+  var row = document.createElement("div");
+  row.className = "rate";
+  var label = document.createElement("span");
+  label.textContent = "Was this helpful?";
+  row.append(label);
+  [[true, "Yes"], [false, "No"]].forEach(function (opt) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.innerHTML = THUMB;  // fixed icon markup, no user text
+    if (!opt[0]) { btn.querySelector("svg").style.transform = "rotate(180deg)"; }
+    btn.append(document.createTextNode(opt[1]));
+    btn.setAttribute("aria-label", opt[0] ? "Helpful" : "Not helpful");
+    btn.onclick = async function () {
+      row.replaceChildren(document.createTextNode("Thanks for the feedback."));
+      try {
+        await fetch("/bots/" + encodeURIComponent(botId) + "/feedback", {
+          method: "POST",
+          headers: skyHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ session_id: session, answer_id: answerId, helpful: opt[0] })
+        });
+      } catch (e) {}
+    };
+    row.append(btn);
+  });
   return row;
 }
 
@@ -1366,9 +1594,9 @@ ADMIN_BODY = _header("admin") + r"""
       <table>
         <thead><tr>
           <th>Bot</th><th>Plan</th><th class="num">Questions</th><th class="num">Avg</th><th class="num">p95</th>
-          <th>Routing mix</th><th>Budget used</th><th class="num">Saved</th><th>Status</th><th><span style="position:absolute;left:-9999px">Actions</span></th>
+          <th>Routing mix</th><th>Budget used</th><th class="num">Saved</th><th>Quality</th><th>Status</th><th><span style="position:absolute;left:-9999px">Actions</span></th>
         </tr></thead>
-        <tbody id="rows"><tr><td colspan="10" class="empty">Loading...</td></tr></tbody>
+        <tbody id="rows"><tr><td colspan="11" class="empty">Loading...</td></tr></tbody>
       </table>
     </div>
   </section>
@@ -1479,7 +1707,7 @@ async function refresh(once) {
     if (!data.bots.length) {
       var empty = document.createElement("tr");
       var c = document.createElement("td");
-      c.colSpan = 10;
+      c.colSpan = 11;
       c.className = "empty";
       var a = document.createElement("a");
       a.href = "/deploy";
@@ -1525,6 +1753,8 @@ async function refresh(once) {
       tr.append(mini(money(s.actual_cost_usd) + " / " + money(b.llm_budget_usd), bar([[cls, used]])));
 
       tr.append(cell(s.saved_percent + "%", "num good"));
+      var qd = b.quality || { helpful: 0, not_helpful: 0, gaps: 0 }, qr = qd.helpful + qd.not_helpful;
+      tr.append(mini((qr ? Math.round(100 * qd.helpful / qr) + "% helpful" : "no ratings") + ", " + qd.gaps + " gaps", bar([["ok", qr ? 100 * qd.helpful / qr : 0], ["over", qr ? 100 * qd.not_helpful / qr : 0]])));
 
       var status = document.createElement("td");
       var pill = document.createElement("span");

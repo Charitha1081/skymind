@@ -6,6 +6,8 @@ the bot answers from the best ones. Two ranking methods, compared by evaluate.py
   keyword  shared meaningful words, rarer words count more (IDF), title matches count double
   bm25     Okapi BM25, the classic search-engine formula: also counts how often a word appears,
            with diminishing returns, and normalises for chunk length
+  hybrid   BM25 + meaning (embeddings, see embeddings.py), combined with reciprocal rank fusion,
+           so "products" can find "sells tents". Falls back to bm25 without embeddings.
 
 Later this can be swapped for embeddings stored in pgvector without changing the
 rest of the service.
@@ -92,10 +94,12 @@ def make_chunks(text: str, max_chars: int = 900) -> list[dict]:
     return chunks
 
 
-SEARCH_METHODS = ("keyword", "bm25")
+SEARCH_METHODS = ("keyword", "bm25", "hybrid")
 BM25_K1 = 1.2   # how quickly repeated words stop adding score
 BM25_B = 0.75   # how strongly long chunks are penalised
 BM25_MIN_SCORE = 2.5  # below this, nothing in the documents is relevant (tuned with evaluate.py)
+EMBED_MIN_SIM = 0.62  # hybrid: a chunk this similar in meaning counts as relevant (tune: evaluate.py search --tune)
+RRF_K = 60            # reciprocal rank fusion constant (the standard value)
 
 
 def build_index(chunks: list[dict]) -> dict:
@@ -128,8 +132,27 @@ def _bm25_scores(index: dict, query: set) -> list[float]:
     return scores
 
 
+def _hybrid(index: dict, chunks: list[dict], query: set, k: int, query_vec: list[float],
+            vectors: list[list[float]], min_sim: float | None) -> list[dict]:
+    """Rank by words (BM25) and by meaning (cosine), fuse the two rankings, keep relevant chunks."""
+    n = len(chunks)
+    bm = _bm25_scores(index, query) if query else [0.0] * n
+    sims = [sum(x * y for x, y in zip(query_vec, v)) for v in vectors]
+    bm_floor = BM25_MIN_SCORE * min(1.0, len(query) / 2) if query else float("inf")
+    sim_floor = EMBED_MIN_SIM if min_sim is None else min_sim
+    keep = [i for i in range(n) if bm[i] >= bm_floor or sims[i] >= sim_floor]
+    if not keep:
+        return []
+    bm_rank = {i: r for r, i in enumerate(sorted(range(n), key=lambda i: -bm[i]))}
+    sim_rank = {i: r for r, i in enumerate(sorted(range(n), key=lambda i: -sims[i]))}
+    fused = {i: 1 / (RRF_K + bm_rank[i]) + 1 / (RRF_K + sim_rank[i]) for i in keep}
+    best = sorted(keep, key=lambda i: -fused[i])[:k]
+    return [dict(chunks[i], score=round(sims[i], 3)) for i in best]
+
+
 def retrieve(index: dict, chunks: list[dict], question: str, k: int = 3, min_score: float | None = None,
-             method: str = "keyword") -> list[dict]:
+             method: str = "keyword", query_vec: list[float] | None = None,
+             vectors: list[list[float]] | None = None, min_sim: float | None = None) -> list[dict]:
     """Return up to k chunks that best match the question, ranked by the chosen method."""
     query = set()
     vocab = list(index["df"])
@@ -140,7 +163,13 @@ def retrieve(index: dict, chunks: list[dict], question: str, k: int = 3, min_sco
             if close:
                 t = close[0]
         query.add(t)
-    if not query or not chunks:
+    if not chunks:
+        return []
+    if method == "hybrid":
+        if query_vec and vectors and len(vectors) == len(chunks):
+            return _hybrid(index, chunks, query, k, query_vec, vectors, min_sim)
+        method = "bm25"  # no embeddings: words only
+    if not query:
         return []
     if method == "bm25" and "tf" in index:
         # A one-word question can't reach a score built for longer ones, so the minimum scales

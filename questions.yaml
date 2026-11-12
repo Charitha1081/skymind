@@ -28,7 +28,7 @@
 - {bot: unt, level: easy, section: Housing, q: "How many residence halls are there?", must: ["15"]}
 - {bot: unt, level: easy, section: Dining, q: "What is the largest dining hall?", must: ["eagle landing"]}
 - {bot: unt, level: easy, section: Dining, q: "Which dining hall is free of the Big 8 allergens?", must: ["kitchen west"]}
-- {bot: unt, level: easy, section: Dining, q: "Where can I find meal plan prices?", must: ["dining.unt.edu"]}
+- {bot: unt, level: easy, section: Meal plans, q: "Where can I find meal plan prices?", must: ["housing.unt.edu|mealplans.unt.edu"]}
 - {bot: unt, level: easy, section: Tutoring and libraries, q: "Where can I get free tutoring?", must: ["willis"]}
 - {bot: unt, level: easy, section: "AI Expo by SSAI, November 16, 2026", q: "When is the AI Expo?", must: ["november 16|nov 16|nov. 16"]}
 - {bot: unt, level: easy, section: "AI Expo by SSAI, November 16, 2026", q: "Where is the AI Expo held?", must: ["emerald ballroom"]}
@@ -41,6 +41,27 @@
 - {bot: unt, refuse: true, level: easy, q: "What is the capital of France?"}
 - {bot: unt, refuse: true, level: easy, q: "What will the weather be in Denton tomorrow?"}
 - {bot: unt, refuse: true, level: easy, q: "Who is the head coach of the UNT football team?"}
+
+# Different words than the documents (word search tends to miss these; meaning search should not)
+- {bot: unt, level: easy, section: Housing, q: "Where do students sleep on campus?", must: ["residence hall|residence halls|15"]}
+- {bot: unt, level: easy, section: Dining, q: "Where can I grab food on campus?", must: ["dining|eagle landing|kitchen west"]}
+- {bot: unt, level: easy, section: Tutoring and libraries, q: "Can someone help me with my homework?", must: ["tutor|willis|learning center"]}
+
+# Student services (added November 2026)
+- {bot: unt, level: easy, section: Housing contact, q: "What is the housing office phone number?", must: ["940-565-2610"]}
+- {bot: unt, level: easy, section: Meal plans, q: "Do freshmen living on campus need a meal plan?", must: ["unlimited"]}
+- {bot: unt, level: easy, section: Meal plans, q: "What are Dining Dollars?", must: ["cashless|student id"]}
+- {bot: unt, level: easy, section: Parking permits, q: "Where do I buy a parking permit?", must: ["parking portal"]}
+- {bot: unt, level: easy, section: "Buses, shuttles and getting around", q: "Do I have to pay to ride the DCTA bus?", must: ["no extra cost|student id|free"]}
+- {bot: unt, level: easy, section: "Buses, shuttles and getting around", q: "Is there a late night shuttle?", must: ["night flight"]}
+- {bot: unt, level: easy, section: Counseling and mental health, q: "How do I make a counseling appointment?", must: ["940-565-2741"]}
+- {bot: unt, level: easy, section: Student Health and Wellness Center (doctor visits), q: "How do I see a doctor on campus?", must: ["940-565-2333|patient portal|myosh"]}
+- {bot: unt, level: easy, section: Career Center and jobs, q: "Where is the Career Center?", must: ["sage hall"]}
+- {bot: unt, level: easy, section: "EUID, passwords and IT help", q: "I forgot my EUID password, what do I do?", must: ["forgot|help desk|940-565-2324"]}
+- {bot: unt, level: easy, section: Spring 2027 academic calendar, q: "When do spring 2027 classes start?", must: ["january 11|jan 11|jan. 11"]}
+- {bot: unt, level: easy, section: Spring 2027 academic calendar, q: "When is spring break 2027?", must: ["march 8"]}
+- {bot: unt, level: hard, section: Spring 2027 academic calendar, q: "What's the difference between dropping a class before January 22 and dropping it in April?", must: ["w"]}
+- {bot: unt, level: easy, section: "Buses, shuttles and getting around", q: "how do i get around without a car", must: ["dcta|bus|shuttle"]}
 
 # ------------------------------------------------------------------ Acme Support
 - {bot: acme, level: easy, section: Shipping, q: "When is shipping free?", must: ["50"]}
@@ -64,3 +85,8 @@
 - {bot: acme, refuse: true, level: easy, q: "Who is the CEO of Acme Outdoor Gear?"}
 - {bot: acme, refuse: true, level: easy, q: "How many colleges does UNT have?"}
 - {bot: acme, refuse: true, level: easy, q: "Can you recommend a good hiking trail near Denver?"}
+
+# Different words than the documents
+- {bot: acme, level: easy, section: About Acme Outdoor Gear, q: "What are your products?", must: ["tent"]}
+- {bot: acme, level: easy, section: Returns and refunds, q: "How do I get my money back?", must: ["30|return"]}
+- {bot: acme, level: easy, section: Contact support, q: "How can I talk to a person?", must: ["555-0100|support@acme.example|chat"]}

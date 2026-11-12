@@ -28,6 +28,7 @@ import time
 import httpx
 import yaml
 
+import embeddings
 import examples
 import knowledge
 import router
@@ -85,18 +86,36 @@ def knowledge_for(bot: str) -> str:
 
 # ---------------------------------------------------------------- search (offline)
 
+async def _embed_all(indexes: dict, qs: list[dict]):
+    async with httpx.AsyncClient() as http:
+        doc_vecs = {bot: await embeddings.embed_chunks(http, chunks) for bot, (chunks, _) in indexes.items()}
+        q_vecs = await embeddings.embed(http, [q["q"] for q in qs], "RETRIEVAL_QUERY")
+    return doc_vecs, {q["id"]: v for q, v in zip(qs, q_vecs)}
+
+
 def eval_search(qs: list[dict], tune: bool = False) -> str:
     indexes = {}
     for bot in {q["bot"] for q in qs}:
         chunks = knowledge.make_chunks(knowledge_for(bot))
         indexes[bot] = (chunks, knowledge.build_index(chunks))
+    methods = ["keyword", "bm25"]
+    doc_vecs, q_vecs, note = {}, {}, ""
+    if embeddings.available():
+        try:
+            doc_vecs, q_vecs = asyncio.run(_embed_all(indexes, qs))
+            methods.append("hybrid")
+        except embeddings.EmbeddingError as err:
+            note = f"Meaning search skipped: {err}"
+    else:
+        note = "Meaning search (hybrid) skipped: set GEMINI_API_KEY to include it."
 
-    def run(method: str, min_score=None):
+    def run(method: str, min_score=None, min_sim=None):
         top1 = top3 = answerable = refused_ok = refuse_n = 0
         misses = []
         for q in qs:
             chunks, index = indexes[q["bot"]]
-            found = knowledge.retrieve(index, chunks, q["q"], k=3, method=method, min_score=min_score)
+            found = knowledge.retrieve(index, chunks, q["q"], k=3, method=method, min_score=min_score,
+                                       query_vec=q_vecs.get(q["id"]), vectors=doc_vecs.get(q["bot"]), min_sim=min_sim)
             titles = [c["title"].split(" (part")[0] for c in found]
             if q.get("refuse") and not q.get("section"):
                 refuse_n += 1
@@ -112,13 +131,15 @@ def eval_search(qs: list[dict], tune: bool = False) -> str:
         return top1 / answerable, top3 / answerable, refused_ok / max(refuse_n, 1), misses
 
     rows, report_misses = [], []
-    for method in knowledge.SEARCH_METHODS:
+    for method in methods:
         t1, t3, rf, misses = run(method)
         rows.append([method, pct(t1), pct(t3), pct(rf)])
         report_misses.append((method, misses))
     n_find = sum(bool(q.get("section")) for q in qs)
     out = ["## Search", "", f"{n_find} questions with a section to find, {len(qs) - n_find} that should find nothing.", "",
            table(["Method", "Right section first", "Right section in top 3", "Finds nothing when it should"], rows)]
+    if note:
+        out += ["", note]
     for method, misses in report_misses:
         if misses:
             out += ["", f"{method} mistakes:"] + [f"- {m}" for m in misses]
@@ -129,6 +150,13 @@ def eval_search(qs: list[dict], tune: bool = False) -> str:
             trows.append([floor, pct(t1), pct(t3), pct(rf)])
         out += ["", "BM25 minimum score (higher = refuses more, may miss answers):", "",
                 table(["Min score", "First", "Top 3", "Finds nothing"], trows)]
+        if "hybrid" in methods:
+            hrows = []
+            for sim in (0.5, 0.55, 0.6, 0.62, 0.65, 0.7, 0.75, 0.8):
+                t1, t3, rf, _ = run("hybrid", min_sim=sim)
+                hrows.append([sim, pct(t1), pct(t3), pct(rf)])
+            out += ["", "Hybrid minimum meaning similarity (EMBED_MIN_SIM in knowledge.py):", "",
+                    table(["Min similarity", "First", "Top 3", "Finds nothing"], hrows)]
     return "\n".join(out)
 
 
@@ -289,7 +317,7 @@ def main() -> None:
     ap.add_argument("--url", default=os.getenv("SKYMIND_URL", "http://chatbot:8000"))
     ap.add_argument("--providers", default="mock", help="comma separated: mock,anthropic,gemini,ollama")
     ap.add_argument("--routing", default="cheap,strong,auto", help="comma separated: cheap,strong,auto")
-    ap.add_argument("--search", default="bm25", help="comma separated: keyword,bm25")
+    ap.add_argument("--search", default="bm25", help="comma separated: keyword,bm25,hybrid (hybrid needs GEMINI_API_KEY on the server)")
     ap.add_argument("--pace", type=float, default=0.0, help="seconds between questions (raise it for free-tier rate limits)")
     ap.add_argument("--min-accuracy", type=float, default=0.85, help="quality bar for the recommendation (0 to 1)")
     ap.add_argument("--limit", type=int, default=0, help="only the first N questions (quick check)")

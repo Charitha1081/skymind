@@ -55,7 +55,7 @@ Prices are list prices from November 2026; check each provider's page. Model nam
 
 ## Evaluation: measured quality, not guesses
 
-`questions.yaml` holds 53 questions about the two sample companies: 45 with the facts a correct answer must contain, and 8 whose answer is *not* in the documents (the bot must say so). `evaluate.py` grades:
+`questions.yaml` holds 73 questions about the two sample companies: 66 with the facts a correct answer must contain, and 7 whose answer is *not* in the documents (the bot must say so). Six of them use different words than the documents ("Where do students sleep?" for housing) to test meaning search. `evaluate.py` grades:
 
 - **search**: does each search method find the right section, and find nothing for off-topic questions?
 - **routing**: does the router send hard questions to the strong model?
@@ -70,16 +70,25 @@ docker compose run --rm evaluate answers --providers gemini --pace 5 --show   # 
 
 ### Measured results (November 2026)
 
-Search, 46 questions with a section to find and 7 that should find nothing:
+Search, 66 questions with a section to find and 7 that should find nothing:
 
 | Method | Right section first | Right section in top 3 | Finds nothing when it should |
 |---|---|---|---|
-| keyword (IDF overlap) | 96% | 100% | 29% |
-| **bm25** (default) | 93% | 93% | 86% |
+| keyword (IDF overlap) | 91% | 94% | 29% |
+| **bm25** (default) | 89% | 91% | 57% |
+| hybrid (bm25 + embeddings) | _run with GEMINI_API_KEY_ | | |
 
-BM25 refuses off-topic questions three times as often, at the cost of two misses where the question uses a different word than the documents ("city" vs "Denton", "phone number" vs "call"). Embeddings would close that gap (roadmap).
+BM25 refuses off-topic questions about twice as often as keyword search. Its misses are questions that use different words than the documents ("sleep" vs "residence hall", "money back" vs "refund"), which is what hybrid search is for. Off-topic questions that share a word with the documents ("weather in *Denton*", "football *coach*" vs "career *coach*") still find a section; the model then says it doesn't have the answer, and the question shows up in the bot's "Questions I couldn't answer" list.
 
-Routing: the router agrees with the easy/hard labels on **96%** of 45 questions (93% before the evaluation exposed "meal *plan*" being treated as a hard question; fixed). The two remaining misses are multi-part questions without a reasoning keyword.
+To measure hybrid and tune its similarity threshold:
+
+```bash
+set GEMINI_API_KEY=your-key
+docker compose run --rm -e GEMINI_API_KEY evaluate search --tune
+```
+Pick the `EMBED_MIN_SIM` with the best balance of found sections and refusals, and set it in `knowledge.py`.
+
+Routing: the router agrees with the easy/hard labels on **97%** of 65 questions (93% before the evaluation exposed "meal *plan*" being treated as a hard question; fixed). The two remaining misses are multi-part questions without a reasoning keyword.
 
 Answers, mock provider (no AI, extractive baseline):
 
@@ -90,6 +99,20 @@ Answers, mock provider (no AI, extractive baseline):
 
 Add your real-model rows by running `evaluate answers` with Claude and/or Gemini.
 
+## Improve your bot (the improvement loop)
+
+A bot is only as useful as its documents. SkyMind shows each company what is missing so they can fix it in minutes, without retraining any model:
+
+1. **Questions I couldn't answer.** When the bot says it doesn't have the information, the question is logged (repeats are counted). Owners see the list under **Your bots → Improve** on `/deploy`.
+2. **Thumbs up and down.** Every answer on the chat page has *Was this helpful? Yes / No*. Not-helpful answers are kept with the question so the owner can see what went wrong. The admin console shows each bot's helpful percentage.
+3. **Add the missing information.** In **Improve**, type the answer (**Answer it**), upload files, or import a web page. The bot uses it on the next question. Then click **Mark fixed**.
+4. **More ways to add documents:** PDF, Word (.docx), text, Markdown and CSV files (up to 5 MB each), and public web pages or online PDFs by link.
+5. **Embedding search (hybrid).** Choose *Meaning + keywords* when deploying (needs GEMINI_API_KEY, free tier). Documents are embedded once with `gemini-embedding-001`; each question is matched by meaning and by words, and the two rankings are combined (reciprocal rank fusion). If embeddings fail, the bot falls back to BM25 and keeps working.
+
+Demo: deploy a bot with only the *About UNT* paragraph, ask "Do I need a meal plan?" (it can't answer), open **Improve**, upload `unt_student_services.md`, and ask again.
+
+Web import safety: SkyMind only fetches `http(s)` pages on ports 80/443 whose addresses are all public, re-checks every redirect, and refuses localhost, private networks and cloud metadata addresses (SSRF protection). Imports are limited to 30 per hour per account.
+
 ## Tests
 
 ```bash
@@ -97,7 +120,7 @@ pip install -r requirements-dev.txt
 python tests/run_all.py
 ```
 
-Three suites with no network or paid calls: the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
+Six suites with no network or paid calls: the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
 
 ## What happens when a question arrives
 
@@ -201,7 +224,13 @@ The server and the load tester share one machine, so treat the numbers as a lowe
 | `GET /my/bots` | Bots owned by the signed-in Google account |
 | `PATCH /bots/{id}/access` | Change who can chat with a bot (owner or admin) |
 | `GET /bots` | Every bot (admin token only) |
-| `POST /bots/{id}/chat` | Chat with a bot |
+| `POST /bots/{id}/chat` | Chat with a bot. Returns `answer_id` (for rating) and `unanswered` |
+| `POST /bots/{id}/feedback` | Rate an answer helpful or not (only the conversation that got it) |
+| `GET /bots/{id}/improve` | Questions it couldn't answer, ratings, not-helpful answers (owner or admin) |
+| `DELETE /bots/{id}/gaps?question=` | Mark a question fixed (owner or admin) |
+| `POST /bots/{id}/knowledge` | Add (`append`) or replace (`replace`) a bot's documents (owner or admin) |
+| `POST /import/file` | Turn a PDF, Word, text, Markdown or CSV file into text |
+| `POST /import/url` | Turn a public web page or online PDF into text |
 | `GET /admin/overview` | All bots with plan, usage, latency, cost, budget status |
 | `DELETE /admin/stats` | Reset usage counters |
 | `POST /plan` | Capacity and cost plan for a spec |
@@ -218,7 +247,9 @@ Interactive docs: http://localhost:8000/docs
 | LLM_PROVIDER | auto | Default provider for new bots: Claude if ANTHROPIC_API_KEY is set, else Gemini if GEMINI_API_KEY is set, else mock |
 | ANTHROPIC_API_KEY, GEMINI_API_KEY, OLLAMA_URL | (empty) | Turn on Claude, Gemini, Ollama |
 | CHEAP_MODEL / STRONG_MODEL | claude-haiku-5-5 / claude-sonnet-5-5 | Claude models (Gemini and Ollama have their own, see "Any AI model") |
-| SEARCH_METHOD | bm25 | Default search for new bots: `bm25` or `keyword` |
+| SEARCH_METHOD | bm25 | Default search for new bots: `bm25`, `keyword` or `hybrid` |
+| EMBED_MODEL / EMBED_DIM | gemini-embedding-001 / 768 | Embedding model and vector size for hybrid search (needs GEMINI_API_KEY) |
+| IMPORT_LIMIT_PER_HOUR | 30 | File and web-page imports per account or address per hour |
 | MAX_ANSWER_TOKENS | 512 | Longest answer, caps cost |
 | MEMORY_WINDOW | 10 | Recent exchanges kept per conversation |
 | MEMORY_TTL_SECONDS | 3600 | Conversation memory expiry |
@@ -238,13 +269,15 @@ Interactive docs: http://localhost:8000/docs
 
 ## Files
 
-`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
+`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `embeddings.py` (meaning search), `improve.py` (unanswered questions and ratings), `ingest.py` (PDF, Word and web page import), `unt_student_services.md` (sample document to upload), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
 ## Honest limits
 
 - "Deploy" currently creates an isolated bot (own documents, memory, routing, budget and stats) inside one running service. Giving each customer a separate Kubernetes deployment with autoscaling is the next step.
 - Memory types `summary` and `long_term` are planned. Today every bot keeps the recent messages of each conversation.
-- Search is lexical (BM25 or keyword), so a question using different words than the documents can miss; embeddings are planned.
+- BM25 and keyword search can miss questions that use different words than the documents. Hybrid search fixes this but needs a Gemini key, and its threshold is only tuned once you run `evaluate search --tune`.
+- Vectors are stored in Redis next to the bot; for very large document sets a vector database (pgvector) would be the next step.
+- Pages that need JavaScript to show text, and scanned PDFs (images), import as almost no text.
 - Answers are graded by required facts, which is strict and explainable but can mark a correct paraphrase as wrong (e.g. "fourteen" vs "14"). Check misses with `--show`.
 - Accounts are individual Google sign-ins. Teams (several people managing one company's bots) are not built yet.
 - The deploy page is open to anyone who can reach the server, limited by MAX_BOTS. Keep BIND_ADDRESS at 127.0.0.1 unless you need others to connect.
@@ -275,6 +308,6 @@ Load testing reads the admin token automatically (from ADMIN_TOKEN or Redis). Fo
 4. Multi-customer platform: deploy page, end-user chat page, admin console (done)
 5. Load test tool (done). Next: run it at 100 / 500 / 1,000 users and record the real numbers above
 6. Evaluation set and model-agnostic providers (done). Next: run it on Claude and Gemini and record the numbers above
-7. Embedding search and long-term memory with pgvector, measured with the same evaluation set
+7. Improvement loop: unanswered questions, ratings, file and web import, hybrid embedding search (done). Next: tune with a Gemini key; long-term memory and pgvector
 8. Per-customer Kubernetes deployment with autoscaling
 9. Teams and roles for companies (Google sign-in and per-bot access are done)

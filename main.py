@@ -31,13 +31,16 @@ from contextlib import asynccontextmanager
 
 import httpx
 import redis.asyncio as redis
-from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 import auth
+import embeddings
 import examples
+import improve
+import ingest
 import knowledge
 import pages
 import planner
@@ -117,7 +120,8 @@ CSRF_VALUE = "SkyMind"
 async def security_layer(request: Request, call_next):
     """Reject oversized requests and add security headers to every response."""
     size = request.headers.get("content-length")
-    if size and (not size.isdigit() or int(size) > MAX_BODY_BYTES):
+    limit = ingest.MAX_FILE_BYTES + 100_000 if request.url.path == "/import/file" else MAX_BODY_BYTES
+    if size and (not size.isdigit() or int(size) > limit):
         return JSONResponse({"detail": "Request is too large."}, status_code=413)
     # CSRF: a request that changes something and relies on the sign-in cookie must carry our custom
     # header. Other websites cannot add it (the browser would need a CORS preflight SkyMind never allows).
@@ -207,6 +211,18 @@ def chat_key(bot_id: str, session_id: str) -> str:
     return f"chat:{bot_id}:{session_id}"
 
 
+def vectors_key(bot_id: str) -> str:
+    return f"vec:{bot_id}"  # meaning-search vectors, one per chunk (hybrid search only)
+
+
+async def embed_or_fail(chunks: list[dict]) -> list[list[float]]:
+    try:
+        return await embeddings.embed_chunks(app.state.http, chunks)
+    except embeddings.EmbeddingError as err:
+        log.warning("Embedding failed: %s", err)
+        raise HTTPException(502, "Could not prepare meaning search right now (Gemini embeddings). Try again, or use search: bm25.")
+
+
 def stats_key(bot_id: str) -> str:
     return f"stats:{bot_id}"
 
@@ -249,6 +265,9 @@ async def load_bot(bot_id: str) -> dict:
         raise HTTPException(404, "Bot not found")
     bot = json.loads(raw)
     bot["_index"] = knowledge.build_index(bot["chunks"])
+    if bot.get("search") == "hybrid":
+        raw_vec = await app.state.redis.get(vectors_key(bot_id))
+        bot["_vectors"] = json.loads(raw_vec) if raw_vec else None
     app.state.bot_cache[bot_id] = (now, bot)
     return bot
 
@@ -279,6 +298,8 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
     search = str(body.get("search") or SEARCH_METHOD).strip().lower()
     if search not in knowledge.SEARCH_METHODS:
         raise HTTPException(422, f"search must be one of: {', '.join(knowledge.SEARCH_METHODS)}")
+    if search == "hybrid" and not embeddings.available():
+        raise HTTPException(422, "Meaning search needs GEMINI_API_KEY on the server. Use search: bm25.")
     if not providers.available(spec["provider"]):
         raise HTTPException(422, f"The {providers.PROVIDERS[spec['provider']]['label']} provider is not set up on this server.")
 
@@ -312,6 +333,8 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         "access": access,
         "search": search,
     }
+    if search == "hybrid":  # embed before saving, so a failure leaves nothing half-made
+        await app.state.redis.set(vectors_key(bot_id), json.dumps(await embed_or_fail(chunks)))
     await app.state.redis.set(bot_key(bot_id), json.dumps(bot))
     await app.state.redis.sadd(BOTS_SET, bot_id)
 
@@ -341,12 +364,28 @@ async def seed_examples() -> None:
         if raw is None:
             body = {k: v for k, v in ex.items() if k != "key"}
             await create_bot(body, fixed_id=bot_id, featured=True)
+            bot = json.loads(await app.state.redis.get(bot_key(bot_id)))
+            bot["sample_hash"] = hashlib.sha256(ex["knowledge"].encode()).hexdigest()[:16]
+            await app.state.redis.set(bot_key(bot_id), json.dumps(bot))
             created.append("/chat/" + bot_id)
         else:
             bot = json.loads(raw)
-            if not bot.get("featured"):
-                bot["featured"] = True
+            changed = not bot.get("featured")
+            bot["featured"] = True
+            # Redis outlives a code update on hosting, so bring a sample bot's documents up to date
+            # when examples.py changes (only for unowned sample bots).
+            sample_hash = hashlib.sha256(ex["knowledge"].encode()).hexdigest()[:16]
+            if not bot.get("owner_email") and bot.get("sample_hash") != sample_hash:
+                bot["chunks"] = knowledge.make_chunks(ex["knowledge"])
+                bot["sample_hash"] = sample_hash
+                if bot.get("search") == "hybrid":
+                    bot["search"] = "bm25"
+                    await app.state.redis.delete(vectors_key(bot_id))
+                changed = True
+                created.append("/chat/" + bot_id + " (documents updated)")
+            if changed:
                 await app.state.redis.set(bot_key(bot_id), json.dumps(bot))
+                app.state.bot_cache.pop(bot_id, None)
     if created:
         print("SkyMind: sample bots deployed (" + ", ".join(created) + ")", flush=True)
 
@@ -426,6 +465,7 @@ async def bot_usage(bot_id: str, request: Request):
         "llm_budget_usd": round(bot["llm_budget"], 2),
         "budget_guard": stats["actual_cost_usd"] >= bot["llm_budget"],
         "access": bot.get("access") or {"mode": "public", "allowed_domains": [], "allowed_emails": []},
+        "quality": await quality_counts(bot_id),
     }
 
 
@@ -456,13 +496,151 @@ async def delete_bot(bot_id: str, request: Request):
     if not (await is_owner(request, bot) or await is_admin(request)):
         raise HTTPException(401, "Only the company that deployed this bot, or a SkyMind admin, can delete it.")
     r = app.state.redis
-    keys = [bot_key(bot_id), stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id)]
-    async for key in r.scan_iter(match=f"chat:{bot_id}:*"):
-        keys.append(key)
+    keys = [bot_key(bot_id), vectors_key(bot_id), stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id)] + improve.bot_keys(bot_id)
+    for pattern in (f"chat:{bot_id}:*", f"answer:{bot_id}:*", f"rated:{bot_id}:*"):
+        async for key in r.scan_iter(match=pattern):
+            keys.append(key)
     await r.delete(*keys)
     await r.srem(BOTS_SET, bot_id)
     app.state.bot_cache.pop(bot_id, None)
     return {"deleted": bot_id}
+
+
+# ---------- Improving a bot: gaps, ratings, more documents ----------
+
+async def quality_counts(bot_id: str) -> dict:
+    r = app.state.redis
+    up, down = await r.hmget(stats_key(bot_id), ["thumbs_up", "thumbs_down"])
+    return {"helpful": int(up or 0), "not_helpful": int(down or 0), "gaps": await r.zcard(improve.gaps_key(bot_id))}
+
+
+async def require_owner(request: Request, bot: dict) -> None:
+    if not (await is_owner(request, bot) or await is_admin(request)):
+        raise HTTPException(403, "Only the company that deployed this bot can do this.")
+
+
+@app.get("/bots/{bot_id}/improve")
+async def improve_report(bot_id: str, request: Request):
+    """What to fix: questions the bot couldn't answer, answers rated not helpful, current sections."""
+    bot = await load_bot(bot_id)
+    await require_owner(request, bot)
+    r = app.state.redis
+    return {
+        "gaps": await improve.list_gaps(r, bot_id),
+        "feedback": await improve.feedback_summary(r, bot_id, stats_key(bot_id)),
+        "sections": [c["title"] for c in bot["chunks"]],
+        "characters": sum(len(c["text"]) for c in bot["chunks"]),
+        "max_characters": MAX_KNOWLEDGE_CHARS,
+    }
+
+
+@app.delete("/bots/{bot_id}/gaps")
+async def clear_gaps(bot_id: str, request: Request, question: str | None = None):
+    """Mark one question fixed (?question=<key>) or clear the whole list."""
+    bot = await load_bot(bot_id)
+    await require_owner(request, bot)
+    await improve.clear_gap(app.state.redis, bot_id, question)
+    return {"cleared": question or "all"}
+
+
+class KnowledgeUpdate(BaseModel):
+    text: str = Field(min_length=1, max_length=MAX_KNOWLEDGE_CHARS)
+    mode: str = Field(default="append", pattern="^(append|replace)$")
+
+
+@app.post("/bots/{bot_id}/knowledge")
+async def update_knowledge(bot_id: str, req: KnowledgeUpdate, request: Request):
+    """Add information to a bot (or replace all of it). Takes effect on the next question."""
+    bot = await load_bot(bot_id)
+    await require_owner(request, bot)
+    new_chunks = knowledge.make_chunks(req.text)
+    if not new_chunks:
+        raise HTTPException(422, "Could not read any text to add.")
+    raw = await app.state.redis.get(bot_key(bot_id))
+    stored = json.loads(raw)
+    chunks = new_chunks if req.mode == "replace" else stored["chunks"] + new_chunks
+    total = sum(len(c["text"]) for c in chunks)
+    if total > MAX_KNOWLEDGE_CHARS:
+        raise HTTPException(422, f"Documents would be too long ({total:,} of {MAX_KNOWLEDGE_CHARS:,} characters).")
+    if stored.get("search") == "hybrid":  # keep one vector per chunk
+        if req.mode == "replace":
+            vectors = await embed_or_fail(chunks)
+        else:
+            old = json.loads(await app.state.redis.get(vectors_key(bot_id)) or "[]")
+            vectors = old + await embed_or_fail(new_chunks)
+        await app.state.redis.set(vectors_key(bot_id), json.dumps(vectors))
+    stored["chunks"] = chunks
+    await app.state.redis.set(bot_key(bot_id), json.dumps(stored))
+    app.state.bot_cache.pop(bot_id, None)
+    return {"sections": len(chunks), "added": len(new_chunks), "characters": total}
+
+
+class Feedback(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_ID_PATTERN)
+    answer_id: str = Field(min_length=6, max_length=40, pattern=r"^[A-Za-z0-9_-]+$")
+    helpful: bool
+    comment: str = Field(default="", max_length=500)
+
+
+@app.post("/bots/{bot_id}/feedback")
+async def rate_answer(bot_id: str, req: Feedback):
+    """A customer rates an answer they received (one rating per answer)."""
+    await load_bot(bot_id)
+    if await rate_limited(f"fb:{bot_id}:{req.session_id}", 30):
+        raise HTTPException(429, "Too many ratings. Please wait a minute.")
+    result = await improve.record_feedback(
+        app.state.redis, bot_id, req.session_id, req.answer_id, req.helpful, stats_key(bot_id), req.comment
+    )
+    if result == "unknown":
+        raise HTTPException(404, "That answer can't be rated (it is older than 7 days or from another conversation).")
+    return {"recorded": result == "ok", "already_rated": result == "duplicate"}
+
+
+# ---------- Importing documents: PDF, Word, text files and web pages ----------
+
+IMPORT_LIMIT_PER_HOUR = int(os.getenv("IMPORT_LIMIT_PER_HOUR", "30"))
+
+
+async def require_importer(request: Request) -> None:
+    """Same rule as deploying: signed in when sign-in is required; limited per visitor."""
+    admin = await is_admin(request)
+    if login_required_to_deploy() and not admin and not await current_user(request):
+        raise HTTPException(401, "Sign in with Google to import documents.")
+    client_ip = request.client.host if request.client else "unknown"
+    if not admin and await rate_limited(f"import:{client_ip}", IMPORT_LIMIT_PER_HOUR, window_s=3600):
+        raise HTTPException(429, "Too many imports from your address this hour. Please try again later.")
+
+
+def import_result(title: str, text: str) -> dict:
+    return {"title": title, "text": text[:MAX_KNOWLEDGE_CHARS], "characters": len(text),
+            "truncated": len(text) > MAX_KNOWLEDGE_CHARS}
+
+
+@app.post("/import/file")
+async def import_file(request: Request, file: UploadFile = File(...)):
+    """Read a PDF, Word (.docx), text, Markdown or CSV file and return its text, ready to add to a bot."""
+    await require_importer(request)
+    data = await file.read(ingest.MAX_FILE_BYTES + 1)
+    try:
+        text = await run_in_threadpool(ingest.extract_file, file.filename or "document", data)
+    except ingest.IngestError as err:
+        raise HTTPException(422, str(err))
+    return import_result(file.filename or "document", text)
+
+
+class UrlImport(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+
+
+@app.post("/import/url")
+async def import_url(req: UrlImport, request: Request):
+    """Fetch a public web page (or PDF link) and return its text. Private addresses are refused (SSRF)."""
+    await require_importer(request)
+    try:
+        title, text = await ingest.fetch_url(req.url)
+    except ingest.IngestError as err:
+        raise HTTPException(422, str(err))
+    return import_result(title, text)
 
 
 # ---------- Chat ----------
@@ -484,6 +662,8 @@ class ChatResponse(BaseModel):
     cost_usd: float
     sources: list[str] = []
     budget_guard: bool = False
+    answer_id: str = ""        # use it to rate this answer: POST /bots/{id}/feedback
+    unanswered: bool = False   # the bot said it couldn't answer; logged for the company
 
 
 async def load_history(bot_id: str, session_id: str) -> list[dict]:
@@ -647,7 +827,14 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
         tier = "cheap"
         reason += "; strong model paused because the monthly LLM budget is used up"
 
-    sources = knowledge.retrieve(bot["_index"], bot["chunks"], req.message, k=3, method=bot.get("search", "keyword"))
+    query_vec = None
+    if bot.get("search") == "hybrid" and bot.get("_vectors"):
+        try:
+            query_vec = await embeddings.embed_query(app.state.http, req.message)
+        except embeddings.EmbeddingError as err:  # fall back to word search; chat keeps working
+            log.warning("Query embedding failed, using BM25: %s", err)
+    sources = knowledge.retrieve(bot["_index"], bot["chunks"], req.message, k=3, method=bot.get("search", "keyword"),
+                                 query_vec=query_vec, vectors=bot.get("_vectors"))
     result = await call_llm(bot, history, req.message, tier, sources)
     if result.get("fallback"):
         tier = result["tier"]
@@ -658,6 +845,11 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
     cost = await record_stats(
         bot_id, tier, result["input_tokens"], result["output_tokens"], latency_ms, req.session_id, bot_provider(bot)
     )
+    # Improvement loop: log questions the bot couldn't answer, and keep the answer so it can be rated.
+    unanswered = improve.is_unanswered(result["text"]) and not router.is_greeting(req.message)
+    if unanswered:
+        await improve.log_gap(r, bot_id, req.message)
+    answer_id = await improve.remember_answer(r, bot_id, req.session_id, req.message, result["text"], result["model"])
     return ChatResponse(
         reply=result["text"],
         model=result["model"],
@@ -670,6 +862,8 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
         cost_usd=round(cost, 8),
         sources=[s["title"] for s in sources],
         budget_guard=guard,
+        answer_id=answer_id,
+        unanswered=unanswered,
     )
 
 
@@ -719,6 +913,7 @@ async def admin_overview():
                 "stats": stats,
                 "owner_email": bot.get("owner_email", ""),
                 "access": (bot.get("access") or {}).get("mode", "public"),
+                "quality": await quality_counts(bot_id),
             }
         )
     rows.sort(key=lambda b: b["created_at"])
@@ -833,6 +1028,7 @@ async def my_bots(request: Request):
                 "access": bot.get("access") or {"mode": "public", "allowed_domains": [], "allowed_emails": []},
                 "requests": stats["requests"],
                 "saved_percent": stats["saved_percent"],
+                "quality": await quality_counts(bot["id"]),
             })
     return rows
 
@@ -866,7 +1062,8 @@ async def plan_endpoint(
 @app.get("/providers")
 async def list_providers():
     """AI providers this server can use, their cheap and strong models, and list prices."""
-    return {"default": LLM_PROVIDER, "providers": providers.describe()}
+    return {"default": LLM_PROVIDER, "providers": providers.describe(), "embeddings": embeddings.available(),
+            "default_search": SEARCH_METHOD}
 
 
 @app.get("/examples")

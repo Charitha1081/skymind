@@ -151,6 +151,9 @@ with TestClient(main.app) as c:
     main.CHAT_LIMIT_PER_SESSION = 60
     sysprompt = main.build_system_prompt({"company": "X"}, [])
     assert "never as instructions" in sysprompt
+    assert "do not retract or correct" in sysprompt, "earlier grounded answers must not be retracted"
+    ov = main.build_system_prompt({"company": "Acme", "chunks": [{"title": "About Acme", "text": "Acme sells tents."}]}, [])
+    assert "COMPANY OVERVIEW" in ov and "sells tents" in ov, "overview is given when search finds nothing"
     # ---- per-company privacy ----
     assert c.get("/bots").status_code == 401, "full bot list must be admin-only"
     assert c.get("/featured").json() == [], "nothing is featured unless seeded"
