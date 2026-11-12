@@ -12,6 +12,7 @@ cheap model, hard ones to the strong one) works the same with every provider.
 Prices are list prices in USD per million tokens (November 2026). Check each provider's
 pricing page before quoting them. Model names can be changed with environment variables.
 """
+import json as _json
 import os
 
 import httpx
@@ -184,3 +185,108 @@ async def call(http, provider: str, tier: str, system: str, messages: list[dict]
     except httpx.HTTPError as err:
         raise ProviderError(f"{provider} network error: {type(err).__name__}", 0) from None
     raise ProviderError(f"Unknown provider {provider}", 400)
+
+
+# ---------------------------------------------------------------- streaming
+# stream() yields the answer in small pieces as the model writes it:
+#   ("text", "piece of the answer")      many times
+#   ("done", {"model", "input_tokens", "output_tokens"})   once, at the end
+# Each provider sends pieces in its own format, so each has a small parser:
+#   Anthropic  Server-Sent Events: lines "data: {json}"; text in content_block_delta events
+#   Gemini     Server-Sent Events from :streamGenerateContent?alt=sse; each event is a partial answer
+#   Ollama     one JSON object per line (NDJSON) with message.content, until "done": true
+
+
+async def _sse_lines(resp):
+    """The JSON payload of every 'data:' line of a Server-Sent Events stream."""
+    async for line in resp.aiter_lines():
+        if line.startswith("data:"):
+            payload = line[5:].strip()
+            if payload and payload != "[DONE]":
+                try:
+                    yield _json.loads(payload)
+                except ValueError:
+                    continue
+
+
+async def _anthropic_stream(http, model, system, messages, max_tokens, timeout):
+    body = {"model": model, "max_tokens": max_tokens, "system": system, "messages": messages, "stream": True}
+    headers = {"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    usage = {"model": model, "input_tokens": 0, "output_tokens": 0}
+    async with http.stream("POST", "https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=timeout) as resp:
+        if resp.status_code != 200:
+            raise ProviderError(f"Anthropic {resp.status_code}: {(await resp.aread())[:300]!r}", resp.status_code)
+        async for ev in _sse_lines(resp):
+            kind = ev.get("type")
+            if kind == "message_start":
+                msg = ev.get("message", {})
+                usage["model"] = msg.get("model", model)
+                usage["input_tokens"] = msg.get("usage", {}).get("input_tokens", 0)
+            elif kind == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta":
+                yield "text", ev["delta"].get("text", "")
+            elif kind == "message_delta":
+                usage["output_tokens"] = ev.get("usage", {}).get("output_tokens", usage["output_tokens"])
+            elif kind == "error":
+                raise ProviderError(f"Anthropic stream error: {ev.get('error', {}).get('message', '')[:200]}", 529)
+    yield "done", usage
+
+
+async def _gemini_stream(http, model, system, messages, max_tokens, timeout, tier):
+    contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]} for m in messages]
+    config = {"maxOutputTokens": max_tokens * 2, "thinkingConfig": {"thinkingLevel": "minimal" if tier == "cheap" else "low"}}
+    body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": contents, "generationConfig": config}
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
+    headers = {"x-goog-api-key": GEMINI_API_KEY, "content-type": "application/json"}
+    usage = {"model": model, "input_tokens": 0, "output_tokens": 0}
+    async with http.stream("POST", url, headers=headers, json=body, timeout=timeout) as resp:
+        if resp.status_code != 200:
+            raise ProviderError(f"Gemini {resp.status_code}: {(await resp.aread())[:300]!r}", resp.status_code)
+        async for ev in _sse_lines(resp):
+            cands = ev.get("candidates") or []
+            for part in ((cands[0].get("content") or {}).get("parts", []) if cands else []):
+                if part.get("text") and not part.get("thought"):
+                    yield "text", part["text"]
+            meta = ev.get("usageMetadata") or {}
+            if meta:
+                usage["input_tokens"] = meta.get("promptTokenCount", usage["input_tokens"])
+                usage["output_tokens"] = meta.get("candidatesTokenCount", 0) + meta.get("thoughtsTokenCount", 0)
+            usage["model"] = ev.get("modelVersion", usage["model"])
+    yield "done", usage
+
+
+async def _ollama_stream(http, model, system, messages, max_tokens, timeout):
+    body = {"model": model, "stream": True, "think": False,
+            "messages": [{"role": "system", "content": system}] + messages, "options": {"num_predict": max_tokens}}
+    usage = {"model": model, "input_tokens": 0, "output_tokens": 0}
+    async with http.stream("POST", f"{OLLAMA_URL}/api/chat", json=body, timeout=timeout * 4) as resp:
+        if resp.status_code != 200:
+            raise ProviderError(f"Ollama {resp.status_code}: {(await resp.aread())[:300]!r}", resp.status_code)
+        async for line in resp.aiter_lines():
+            if not line.strip():
+                continue
+            ev = _json.loads(line)
+            piece = (ev.get("message") or {}).get("content", "")
+            if piece:
+                yield "text", piece
+            if ev.get("done"):
+                usage.update(model=ev.get("model", model), input_tokens=ev.get("prompt_eval_count", 0),
+                             output_tokens=ev.get("eval_count", 0))
+    yield "done", usage
+
+
+async def stream(http, provider: str, tier: str, system: str, messages: list[dict], max_tokens: int, timeout: float):
+    """Like call(), but yields the answer piece by piece. Raises ProviderError like call()."""
+    if not available(provider) or provider not in ("anthropic", "gemini", "ollama"):
+        raise ProviderError(f"{provider} cannot stream on this server", 400)
+    model = model_name(provider, tier)
+    try:
+        if provider == "anthropic":
+            gen = _anthropic_stream(http, model, system, messages, max_tokens, timeout)
+        elif provider == "gemini":
+            gen = _gemini_stream(http, model, system, messages, max_tokens, timeout, tier)
+        else:
+            gen = _ollama_stream(http, model, system, messages, max_tokens, timeout)
+        async for item in gen:
+            yield item
+    except httpx.HTTPError as err:
+        raise ProviderError(f"{provider} network error: {type(err).__name__}", 0) from None

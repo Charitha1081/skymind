@@ -520,6 +520,8 @@ DEPLOY_CSS = r"""
 .badans .q { font-weight: 600; }
 .badans .a { color: var(--muted); margin-top: 2px; }
 .improve textarea { min-height: 110px; }
+.stdrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+.stdrow button { font-size: 13px; padding: 6px 12px; border-radius: 999px; }
 .fixbox { margin: 14px 0 6px; padding: 14px; border-radius: 14px; border: 1px solid var(--zenith); background: var(--zenith-soft); }
 .fixtitle { font-weight: 700; margin-bottom: 4px; }
 .fixbox .urlrow { margin-top: 10px; }
@@ -614,6 +616,7 @@ DEPLOY_BODY = _header("deploy") + r"""
 
       <section class="panel" aria-labelledby="docs-title">
         <h2 class="step-title" id="docs-title"><b>3</b>What should it know?</h2>
+        <div class="stdrow" id="stdrow" hidden><span class="sub small">Start from a standard:</span></div>
         <p class="sub" id="docs-intro" style="margin:0">Paste FAQs, policies or product info, upload files, or import web pages. Each adds to the documents below. Lines starting with # or ## become section titles.</p>
         <div class="row">
           <div><label for="file">Upload PDF, Word, text or CSV files</label>
@@ -724,7 +727,31 @@ function applyJob() {
   $("knowledge").placeholder = t[3];
   if (job !== "answer") { $("model").value = "strong"; }
   $("model").disabled = job !== "answer";
+  $("stdrow").hidden = job !== "code_review";
 }
+// Ready-made coding standards (OWASP Top 10, PEP 8, clean code) for code reviewers: one click adds them.
+(async function loadStandards() {
+  try {
+    var list = await (await fetch("/standards")).json();
+    list.forEach(function (st) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = "+ " + st.label;
+      b.title = st.description;
+      b.onclick = function () {
+        var ta = $("knowledge");
+        var first = st.text.split("\n")[0];
+        if (ta.value.indexOf(first) >= 0) { $("import_msg").className = "small"; $("import_msg").textContent = st.label + " is already in your rules."; return; }
+        ta.value = (ta.value.trim() ? ta.value.trim() + "\n\n" : "") + st.text;
+        updateCount();
+        schedulePlan(0);
+        $("import_msg").className = "small good";
+        $("import_msg").textContent = "Added " + st.label + ". Add your own rules too: the reviewer cites both, and yours win when they disagree.";
+      };
+      $("stdrow").append(b);
+    });
+  } catch (e) {}
+})();
 $("job").addEventListener("change", function () { applyJob(); schedulePlan(0); });
 function fill(ex) {
   $("bot_name").value = ex.bot_name;
@@ -1436,6 +1463,9 @@ body { background: var(--bg); }
 .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
 .jobtag { display: inline-block; margin-left: 8px; font-size: 11.5px; font-weight: 650; padding: 2px 8px; border-radius: 999px; background: var(--zenith-soft); color: var(--zenith); vertical-align: 2px; }
 .chat.wide .bubble { max-width: 100%; }
+.bubble.streaming::after { content: ""; display: inline-block; width: 7px; height: 1.05em; margin-left: 2px; vertical-align: -2px; background: var(--zenith); animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bubble.streaming::after { animation: none; } }
 .bubble pre { white-space: pre; overflow-x: auto; margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; line-height: 1.45; }
 .msg.user .bubble pre { background: rgba(0,0,0,.18); border-color: transparent; color: inherit; }
 .bubble code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .92em; }
@@ -1610,7 +1640,9 @@ function addMessage(text, who, data) {
     var meta = document.createElement("div");
     meta.className = "meta";
     meta.append(chip(data.tier === "strong" ? "Strong model" : "Cheap model", data.tier));
-    meta.append(chip(data.latency_ms < 1000 ? Math.round(data.latency_ms) + " ms" : (data.latency_ms / 1000).toFixed(1) + " s"));
+    var ms = function (v) { return v < 1000 ? Math.round(v) + " ms" : (v / 1000).toFixed(1) + " s"; };
+    if (data.streamed && data.first_token_ms) { meta.append(chip("first words in " + ms(data.first_token_ms))); }
+    meta.append(chip((data.streamed ? "done in " : "") + ms(data.latency_ms)));
     if (data.history_messages) { meta.append(chip("remembers " + data.history_messages + " messages")); }
     (data.sources || []).forEach(function (s) { meta.append(chip("Source: " + s)); });
     if (data.job && data.job !== "answer" && data.context_sections) {
@@ -1720,15 +1752,78 @@ function showGate(bot) {
 }
 var currentBot = null;
 
-async function send() {
-  var text = $("msg").value.trim();
-  if (!text || busy) return;
-  busy = true;
-  $("msg").value = "";
-  grow();
-  addMessage(text, "user", null);
-  var wait = addTyping();
-  $("send").disabled = true;
+// Streaming: the server sends the answer as Server-Sent Events while the model writes it.
+// Each event is "event: <name>" + "data: <json>" followed by a blank line.
+function parseEvent(block) {
+  var ev = { event: "message", data: null };
+  block.split("\n").forEach(function (line) {
+    if (line.indexOf("event:") === 0) ev.event = line.slice(6).trim();
+    else if (line.indexOf("data:") === 0) { try { ev.data = JSON.parse(line.slice(5)); } catch (e) {} }
+  });
+  return ev;
+}
+
+async function askStreaming(text, wait) {
+  // Returns true when handled; false when streaming isn't possible (then the caller uses /chat).
+  var res;
+  try {
+    res = await fetch("/bots/" + encodeURIComponent(botId) + "/chat/stream", {
+      method: "POST",
+      headers: skyHeaders({ "Content-Type": "application/json", "Accept": "text/event-stream" }),
+      body: JSON.stringify({ session_id: session, message: text })
+    });
+  } catch (e) { return false; }
+  if (res.status === 401 && currentBot) { wait.remove(); showGate(currentBot); return true; }
+  if (!res.ok) {
+    var err = {};
+    try { err = await res.json(); } catch (e) {}
+    wait.remove();
+    addMessage(typeof err.detail === "string" ? err.detail : "Something went wrong. Please try again.", "bot", null);
+    return true;
+  }
+  if (!res.body || (res.headers.get("content-type") || "").indexOf("text/event-stream") !== 0) return false;
+
+  var reader = res.body.getReader(), decoder = new TextDecoder(), buf = "", got = "";
+  var row = null, bubble = null, done = null, failure = null;
+  try {
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buf += decoder.decode(chunk.value, { stream: true });
+      var cut;
+      while ((cut = buf.indexOf("\n\n")) >= 0) {
+        var ev = parseEvent(buf.slice(0, cut));
+        buf = buf.slice(cut + 2);
+        if (ev.event === "text" && ev.data) {
+          if (!row) {
+            wait.remove();
+            row = document.createElement("div");
+            row.className = "msg bot";
+            bubble = document.createElement("div");
+            bubble.className = "bubble streaming";
+            row.append(bubble);
+            $("log").append(row);
+          }
+          got += ev.data.text;
+          bubble.replaceChildren();
+          renderRich(bubble, got);  // formatted as it grows (bold, code blocks)
+          $("log").scrollTop = $("log").scrollHeight;
+        } else if (ev.event === "done") { done = ev.data; }
+        else if (ev.event === "error") { failure = ev.data && ev.data.detail; }
+      }
+    }
+  } catch (e) { failure = failure || "The connection was interrupted. Please ask again."; }
+  wait.remove();
+  if (row) row.remove();
+  if (done) { addMessage(done.reply, "bot", done); }
+  else {
+    if (got) addMessage(got, "bot", null);
+    addMessage(failure || "The answer didn't finish. Please ask again.", "bot", null);
+  }
+  return true;
+}
+
+async function askWhole(text, wait) {
   try {
     var res = await fetch("/bots/" + encodeURIComponent(botId) + "/chat", {
       method: "POST",
@@ -1737,7 +1832,7 @@ async function send() {
     });
     var data = await res.json();
     wait.remove();
-    if (res.status === 401 && currentBot) { busy = false; showGate(currentBot); return; }
+    if (res.status === 401 && currentBot) { showGate(currentBot); return; }
     if (!res.ok) {
       addMessage(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.", "bot", null);
     } else {
@@ -1747,6 +1842,18 @@ async function send() {
     wait.remove();
     addMessage("Could not reach the server. Check your connection and try again.", "bot", null);
   }
+}
+
+async function send() {
+  var text = $("msg").value.trim();
+  if (!text || busy) return;
+  busy = true;
+  $("msg").value = "";
+  grow();
+  addMessage(text, "user", null);
+  var wait = addTyping();
+  $("send").disabled = true;
+  if (!(await askStreaming(text, wait))) { await askWhole(text, wait); }
   busy = false;
   $("send").disabled = false;
   $("msg").focus();

@@ -3,6 +3,7 @@
 UNT Helper: facts collected from official UNT web pages in November 2026 (always
 verify details on unt.edu). Acme Outdoor Gear is a made-up company.
 """
+import standards
 
 UNT_KNOWLEDGE = """
 ## About this assistant
@@ -156,7 +157,7 @@ EXAMPLES = [
         "memory": "window",
         "model": "strong",
         "monthly_budget": "$150",
-        "knowledge": ACME_ENGINEERING_RULES.strip(),
+        "knowledge": ACME_ENGINEERING_RULES.strip() + "\n\n" + standards.OWASP_TOP10.strip(),
     },
     {
         "key": "acme-ideas",

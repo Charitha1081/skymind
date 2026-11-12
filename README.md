@@ -99,6 +99,15 @@ Answers, mock provider (no AI, extractive baseline):
 
 Add your real-model rows by running `evaluate answers` with Claude and/or Gemini.
 
+## Streaming answers
+
+Answers appear word by word, like ChatGPT. `POST /bots/{id}/chat/stream` sends Server-Sent Events: `start` (model tier, sources), many `text` pieces as the model writes, then `done` with the same fields as `/chat` plus `first_token_ms` (time to first word, shown as a chip). Claude, Gemini and Ollama each stream in their own format; `providers.stream()` parses all three behind one async generator.
+
+- All checks (access, rate limits, budget, message length) run **before** the first byte, so those stay normal HTTP errors.
+- If the stream fails before any text, SkyMind uses the normal call (retry + strong-to-cheap fallback) and sends that answer in one piece. If it fails halfway, the user keeps the words already shown plus a short note.
+- Memory, cost, the unanswered-question log and ratings work exactly as with `/chat` (both share `prepare_chat()` and `finish_chat()`).
+- `Cache-Control: no-cache` and `X-Accel-Buffering: no` stop proxies from holding the pieces back. The chat page falls back to `/chat` if the browser can't stream.
+
 ## Bot jobs: more than answering questions
 
 When deploying, a company picks what its bot is **for**. The documents are then its knowledge or its rules for that job:
@@ -111,7 +120,9 @@ When deploying, a company picks what its bot is **for**. The documents are then 
 
 The code reviewer gives a summary (ready to merge or not), issues ranked High / Medium / Low with the fix, and **cites the company's own rule** for each one, e.g. `[Security rules]`. A plain chatbot can review code; a SkyMind reviewer reviews it against *your* standards. It never repeats a secret it finds, and flags comments that try to instruct the reviewer (prompt injection) instead of obeying them. Reviews and ideas see every document section when they fit (15,000 characters), otherwise the 6 best matches. Without an AI key, a rule-based checker (secrets, SQL injection, bare except, missing timeouts, money as float, print, TODO, eval) still reviews and cites the rules, so the demo works offline.
 
-Samples: `/chat/acme-code-reviewer` (with a "Try sample code with bugs" button) and `/chat/acme-idea-partner`.
+**Ready-made standards.** A company doesn't have to write rules from scratch: on `/deploy`, a code reviewer can start from **OWASP Top 10:2025** (security), **PEP 8** (Python style) or **clean code basics** in one click (`GET /standards`, written in `standards.py` as short review rules that summarise the public standards). The company adds its own rules on top. The reviewer cites both, e.g. `[Security rules] [OWASP A05: Injection]`, and the company's rules win when they disagree.
+
+Samples: `/chat/acme-code-reviewer` The sample reviewer has Acme's rules plus OWASP Top 10. (with a "Try sample code with bugs" button) and `/chat/acme-idea-partner`.
 
 ## Improve your bot (the improvement loop)
 
@@ -135,7 +146,7 @@ pip install -r requirements-dev.txt
 python tests/run_all.py
 ```
 
-Eight suites with no network or paid calls: bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits), Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions), the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
+Nine suites with no network or paid calls: streaming (Claude, Gemini and Ollama stream parsers, event order, fallbacks), bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits), Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions), the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
 
 ## What happens when a question arrives
 
@@ -240,6 +251,7 @@ The server and the load tester share one machine, so treat the numbers as a lowe
 | `PATCH /bots/{id}/access` | Change who can chat with a bot (owner or admin) |
 | `GET /bots` | Every bot (admin token only) |
 | `POST /bots/{id}/chat` | Chat with a bot. Returns `answer_id` (for rating) and `unanswered` |
+| `POST /bots/{id}/chat/stream` | Same, streamed as Server-Sent Events (`start`, `text`..., `done` or `error`) |
 | `POST /bots/{id}/feedback` | Rate an answer helpful or not (only the conversation that got it) |
 | `GET /bots/{id}/improve` | Questions it couldn't answer, ratings, not-helpful answers (owner or admin) |
 | `DELETE /bots/{id}/gaps?question=` | Mark a question fixed (owner or admin) |
@@ -268,6 +280,7 @@ Interactive docs: http://localhost:8000/docs
 | FIX_LIMIT_PER_HOUR | 10 | Suggest fix runs per bot per hour |
 | IMPORT_LIMIT_PER_HOUR | 30 | File and web-page imports per account or address per hour |
 | MAX_ANSWER_TOKENS | 512 | Longest answer, caps cost |
+| STREAM_MOCK_DELAY_S | 0.02 | Mock provider: pause between streamed words (demo only) |
 | MEMORY_WINDOW | 10 | Recent exchanges kept per conversation |
 | MEMORY_TTL_SECONDS | 3600 | Conversation memory expiry |
 | WORKERS | 1 | Server processes inside the container |
@@ -286,7 +299,7 @@ Interactive docs: http://localhost:8000/docs
 
 ## Files
 
-`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `embeddings.py` (meaning search), `jobs.py` (answer, code reviewer, idea partner), `fixer.py` (Suggest fix), `improve.py` (unanswered questions and ratings), `ingest.py` (PDF, Word and web page import), `unt_student_services.md` (sample document to upload), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
+`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `embeddings.py` (meaning search), `jobs.py` (answer, code reviewer, idea partner), `standards.py` (OWASP, PEP 8, clean code rule sets), `fixer.py` (Suggest fix), `improve.py` (unanswered questions and ratings), `ingest.py` (PDF, Word and web page import), `unt_student_services.md` (sample document to upload), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
 ## Honest limits
 

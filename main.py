@@ -32,7 +32,7 @@ from contextlib import asynccontextmanager
 import httpx
 import redis.asyncio as redis
 from fastapi import Body, Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -48,12 +48,14 @@ import pages
 import planner
 import providers
 import router
+import standards
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 # Default provider for new bots: LLM_PROVIDER if set, else the first one with a key (Claude, Gemini), else mock.
 LLM_PROVIDER = providers.default_provider()
 SEARCH_METHOD = os.getenv("SEARCH_METHOD", "bm25").strip().lower()  # default search for new bots (keyword | bm25)
-MAX_ANSWER_TOKENS = int(os.getenv("MAX_ANSWER_TOKENS", "512"))  # caps cost and length of each answer
+MAX_ANSWER_TOKENS = int(os.getenv("MAX_ANSWER_TOKENS", "512"))
+STREAM_MOCK_DELAY_S = float(os.getenv("STREAM_MOCK_DELAY_S", "0.02"))  # mock provider: pause between words  # caps cost and length of each answer
 LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "25"))
 MEMORY_WINDOW = int(os.getenv("MEMORY_WINDOW", "10"))  # last N exchanges kept per conversation
 MEMORY_TTL_SECONDS = int(os.getenv("MEMORY_TTL_SECONDS", "3600"))
@@ -748,6 +750,8 @@ class ChatResponse(BaseModel):
     unanswered: bool = False   # the bot said it couldn't answer; logged for the company
     job: str = "answer"
     context_sections: int = 0  # how many document sections the model was given
+    first_token_ms: float | None = None  # streaming: time until the first word appeared
+    streamed: bool = False
 
 
 async def load_history(bot_id: str, session_id: str) -> list[dict]:
@@ -828,9 +832,12 @@ def mock_answer(bot: dict, message: str, sources: list[dict], tier: str) -> str:
         return f"[mock-{tier}] {bot['greeting']}"
     job = bot.get("job", "answer")
     if job == "code_review" and looks_like_code(message):
-        def find_rule(words: str):
-            hit = knowledge.retrieve(bot["_index"], bot["chunks"], words, k=1, method="bm25", min_score=0.5)
-            return hit[0]["title"] if hit else None
+        def find_rule(words: str, wanted: tuple = ()) -> list[str]:
+            # the company's best-matching rule, plus the standard rules this check maps to (if the bot has them)
+            hits = knowledge.retrieve(bot["_index"], bot["chunks"], words, k=6, method="bm25", min_score=0.5)
+            own = [h["title"] for h in hits if not h["title"].startswith(STANDARD_PREFIXES)]
+            std = [c["title"] for c in bot["chunks"] if any(c["title"].startswith(w) for w in wanted)]
+            return own[:1] + list(dict.fromkeys(std))[:2]
         return f"[mock-{tier}] " + jobs.mock_review(message, find_rule)
     if job == "ideas":
         return f"[mock-{tier}] " + jobs.mock_ideas(bot["company"], sources or bot["chunks"])
@@ -841,6 +848,9 @@ def mock_answer(bot: dict, message: str, sources: list[dict], tier: str) -> str:
             snippet = snippet[:500].rsplit(" ", 1)[0] + "..."
         return f"[mock-{tier}] From {bot['company']}'s documents ({top['title']}): {snippet}"
     return f"[mock-{tier}] I don't have that in {bot['company']}'s documents. Please contact {bot['company']} directly."
+
+
+STANDARD_PREFIXES = ("OWASP", "PEP 8", "Clean code", "About the")
 
 
 def looks_like_code(text: str) -> bool:
@@ -894,8 +904,12 @@ async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sour
     raise HTTPException(502, "The AI model is not available right now. Please try again in a moment.")
 
 
-@app.post("/bots/{bot_id}/chat", response_model=ChatResponse)
-async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
+async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
+    """Everything that happens before the model is called (shared by /chat and /chat/stream).
+
+    Checks access, limits and budget, picks the model tier and finds the document sections.
+    Raises HTTPException for any problem, before a single word is sent back.
+    """
     start = time.perf_counter()
     bot = await load_bot(bot_id)
     r = app.state.redis
@@ -916,8 +930,8 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
         f"ip:{client_ip}", CHAT_LIMIT_PER_IP
     ):
         raise HTTPException(429, "Too many messages. Please wait a minute and try again.")
-    spent_so_far = float(await r.hget(stats_key(bot_id), "actual_cost_usd") or 0)
-    if spent_so_far >= max(bot["llm_budget"], 1.0) * HARD_STOP_FACTOR:
+    spent = float(await r.hget(stats_key(bot_id), "actual_cost_usd") or 0)
+    if spent >= max(bot["llm_budget"], 1.0) * HARD_STOP_FACTOR:
         raise HTTPException(429, f"{bot['company']}'s assistant has reached its monthly limit. Please contact {bot['company']} directly.")
     remembers = bot["spec"]["memory"] != ["none"]
     job = bot.get("job", "answer")
@@ -933,7 +947,6 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
         tier, reason = job_cfg["tier"], f"{job_cfg['label'].lower()} jobs always use the {job_cfg['tier']} model"
     else:
         tier, reason = router.pick_tier(req.message, bot["spec"]["model"])
-    spent = float(await r.hget(stats_key(bot_id), "actual_cost_usd") or 0)
     guard = spent >= bot["llm_budget"]
     if guard and tier == "strong":
         tier = "cheap"
@@ -954,21 +967,28 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
                                      method=bot.get("search", "keyword"), query_vec=query_vec, vectors=bot.get("_vectors"))
         if wide and not sources:
             sources = bot["chunks"][:jobs.WIDE_K]
-    result = await call_llm(bot, history, req.message, tier, sources)
+    return {"start": start, "bot": bot, "bot_id": bot_id, "req": req, "history": history, "remembers": remembers,
+            "job": job, "job_cfg": job_cfg, "tier": tier, "reason": reason, "guard": guard, "sources": sources}
+
+
+async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
+    """Everything after the answer is complete: memory, stats and cost, gap logging, rating id."""
+    bot, bot_id, req, r = ctx["bot"], ctx["bot_id"], ctx["req"], app.state.redis
+    tier, reason = ctx["tier"], ctx["reason"]
     if result.get("fallback"):
         tier = result["tier"]
         reason += "; the strong model was busy, so the cheap model answered"
-    total = await save_turn(bot_id, req.session_id, req.message, result["text"]) if remembers else 0
-
-    latency_ms = round((time.perf_counter() - start) * 1000, 1)
+    total = await save_turn(bot_id, req.session_id, req.message, result["text"]) if ctx["remembers"] else 0
+    latency_ms = round((time.perf_counter() - ctx["start"]) * 1000, 1)
     cost = await record_stats(
         bot_id, tier, result["input_tokens"], result["output_tokens"], latency_ms, req.session_id, bot_provider(bot)
     )
     # Improvement loop: log questions the bot couldn't answer, and keep the answer so it can be rated.
-    unanswered = job_cfg["log_gaps"] and improve.is_unanswered(result["text"]) and not router.is_greeting(req.message)
+    unanswered = ctx["job_cfg"]["log_gaps"] and improve.is_unanswered(result["text"]) and not router.is_greeting(req.message)
     if unanswered:
         await improve.log_gap(r, bot_id, req.message)
     answer_id = await improve.remember_answer(r, bot_id, req.session_id, req.message, result["text"], result["model"])
+    sources, job = ctx["sources"], ctx["job"]
     return ChatResponse(
         reply=result["text"],
         model=result["model"],
@@ -980,12 +1000,118 @@ async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
         output_tokens=result["output_tokens"],
         cost_usd=round(cost, 8),
         sources=[s["title"] for s in sources] if job == "answer" else [],
-        budget_guard=guard,
-        job=job,
-        context_sections=len(sources),
+        budget_guard=ctx["guard"],
         answer_id=answer_id,
         unanswered=unanswered,
+        job=job,
+        context_sections=len(sources),
+        first_token_ms=result.get("first_token_ms"),
+        streamed=bool(result.get("streamed")),
     )
+
+
+@app.post("/bots/{bot_id}/chat", response_model=ChatResponse)
+async def bot_chat(bot_id: str, req: ChatRequest, request: Request):
+    """Ask a question and get the whole answer at once."""
+    ctx = await prepare_chat(bot_id, req, request)
+    result = await call_llm(ctx["bot"], ctx["history"], req.message, ctx["tier"], ctx["sources"])
+    return await finish_chat(ctx, result)
+
+
+# ---------- Streaming: the answer appears word by word ----------
+
+def sse(event: str, data: dict) -> str:
+    """One Server-Sent Event: 'event: <name>' and 'data: <json>' lines, then a blank line."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+async def stream_llm(bot: dict, history: list[dict], message: str, tier: str, sources: list[dict], start: float):
+    """Yield ("text", piece) while the model writes, then ("done", result) like call_llm returns.
+
+    Reliability: if streaming fails before any text arrives, SkyMind quietly uses the normal call
+    (with its retry and strong-to-cheap fallback) and sends that answer in one piece. If it fails
+    halfway, the user keeps what arrived plus a short note.
+    """
+    provider = bot_provider(bot)
+    system = build_system_prompt(bot, sources)
+    messages = history + [{"role": "user", "content": message}]
+    if provider == "mock":
+        text = mock_answer(bot, message, sources, tier)
+        first = None
+        for word in re.findall(r"\S+\s*", text):  # pretend to stream so the demo looks the same offline
+            first = first or round((time.perf_counter() - start) * 1000, 1)
+            yield "text", word
+            await asyncio.sleep(STREAM_MOCK_DELAY_S)
+        yield "done", {"text": text, "model": f"mock-{tier}", "tier": tier, "streamed": True, "first_token_ms": first,
+                       "input_tokens": router.estimate_tokens(system + " ".join(m["content"] for m in messages)),
+                       "output_tokens": router.estimate_tokens(text)}
+        return
+
+    pieces: list[str] = []
+    first = None
+    max_tokens = jobs.get(bot.get("job"))["max_tokens"] or MAX_ANSWER_TOKENS
+    try:
+        async for kind, value in providers.stream(app.state.http, provider, tier, system, messages, max_tokens, LLM_TIMEOUT_S * 3):
+            if kind == "text" and value:
+                first = first or round((time.perf_counter() - start) * 1000, 1)
+                pieces.append(value)
+                yield "text", value
+            elif kind == "done":
+                text = "".join(pieces).strip()
+                yield "done", {"text": text or "Sorry, I couldn't put an answer together. Please try rephrasing.",
+                               "model": value["model"], "tier": tier, "streamed": True, "first_token_ms": first,
+                               "input_tokens": value["input_tokens"] or router.estimate_tokens(system),
+                               "output_tokens": value["output_tokens"] or router.estimate_tokens(text)}
+                return
+    except providers.ProviderError as err:
+        log.warning("Streaming failed (%s %s): %s", provider, tier, err)
+        if pieces:  # failed halfway: keep what the user already sees
+            note = "\n\n(The answer was cut off. Please ask again.)"
+            yield "text", note
+            text = "".join(pieces) + note
+            yield "done", {"text": text, "model": providers.model_name(provider, tier), "tier": tier, "streamed": True,
+                           "first_token_ms": first, "input_tokens": router.estimate_tokens(system),
+                           "output_tokens": router.estimate_tokens(text)}
+            return
+    # nothing arrived: use the normal call (retry + fallback), sent as one piece
+    result = await call_llm(bot, history, message, tier, sources)
+    yield "text", result["text"]
+    yield "done", result
+
+
+@app.post("/bots/{bot_id}/chat/stream")
+async def bot_chat_stream(bot_id: str, req: ChatRequest, request: Request):
+    """Like /chat, but streams the answer as Server-Sent Events:
+
+      event: start  {tier, route_reason, sources, job, context_sections}   once, right away
+      event: text   {"text": "piece"}                                       many times
+      event: done   {the same fields /chat returns}                         once, at the end
+      event: error  {"detail": "..."}                                       if the answer failed
+    Access, limits and budget are checked first, so those errors are normal HTTP errors.
+    """
+    ctx = await prepare_chat(bot_id, req, request)
+
+    async def events():
+        job = ctx["job"]
+        yield sse("start", {"tier": ctx["tier"], "route_reason": ctx["reason"], "job": job,
+                            "sources": [s["title"] for s in ctx["sources"]] if job == "answer" else [],
+                            "context_sections": len(ctx["sources"])})
+        try:
+            async for kind, value in stream_llm(ctx["bot"], ctx["history"], req.message, ctx["tier"], ctx["sources"], ctx["start"]):
+                if kind == "text":
+                    yield sse("text", {"text": value})
+                else:
+                    final = await finish_chat(ctx, value)
+                    yield sse("done", final.model_dump())
+        except HTTPException as err:
+            yield sse("error", {"detail": err.detail})
+        except Exception:  # never leak internals into the stream
+            log.exception("Streaming chat failed")
+            yield sse("error", {"detail": "Something went wrong. Please try again."})
+
+    # no-cache and X-Accel-Buffering: no stop proxies (like Render's) from holding the pieces back
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # ---------- Admin (for SkyMind operators) ----------
@@ -1179,6 +1305,12 @@ async def plan_endpoint(
         raise HTTPException(422, str(err))
     result["summary"] = planner.format_plan(result)
     return result
+
+
+@app.get("/standards")
+async def list_standards():
+    """Ready-made coding standards a code-reviewer bot can start from (OWASP Top 10, PEP 8, clean code)."""
+    return standards.STANDARDS
 
 
 @app.get("/providers")
