@@ -73,6 +73,7 @@ with TestClient(main.app) as c:
     r = ask(bid, "Do you sell kayaks?", "a2")
     assert r["answered_from"] == "website" and "$299" in r["reply"] and "checked acme.example" in r["reply"], r["reply"]
     assert r["web_sources"][0]["url"] == "https://www.acme.example/kayaks" and r["unanswered"]
+    assert r["sources"] == [], "document-section chips are hidden when the website answered"
     gaps = c.get(f"/bots/{bid}/improve", headers=KEY).json()["gaps"]
     assert gaps[0]["question"] == "Do you sell kayaks?" and gaps[0]["web_url"] == "https://www.acme.example/kayaks"
     assert not any("evil" in u for u in fetched), "only the company's own site"

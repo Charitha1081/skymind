@@ -1028,7 +1028,7 @@ async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
         input_tokens=result["input_tokens"],
         output_tokens=result["output_tokens"],
         cost_usd=round(cost, 8),
-        sources=[s["title"] for s in sources] if job == "answer" else [],
+        sources=[s["title"] for s in sources] if job == "answer" and not found else [],  # website answers show their own links
         budget_guard=ctx["guard"],
         answer_id=answer_id,
         unanswered=unanswered,

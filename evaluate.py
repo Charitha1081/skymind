@@ -198,6 +198,8 @@ async def deploy(client, base, bot, provider, routing, search):
     body = {k: v for k, v in ex.items() if k != "key"}
     body.update(bot_name=f"Eval {bot} {provider} {routing}", provider=provider, model=routing, search=search,
                 monthly_budget="$100000", memory="none")
+    body.pop("website", None)  # measure the documents themselves: no website lookup during the evaluation
+    body["web_lookup"] = False
     r = await client.post(f"{base}/bots", json=body)
     if r.status_code != 200:
         raise RuntimeError(f"deploy failed ({r.status_code}): {r.text[:200]}")
