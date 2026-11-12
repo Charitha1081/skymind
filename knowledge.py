@@ -143,7 +143,9 @@ def retrieve(index: dict, chunks: list[dict], question: str, k: int = 3, min_sco
     if not query or not chunks:
         return []
     if method == "bm25" and "tf" in index:
-        floor = BM25_MIN_SCORE if min_score is None else min_score
+        # A one-word question can't reach a score built for longer ones, so the minimum scales
+        # with the number of meaningful words (1 word: half; 2 or more: full).
+        floor = BM25_MIN_SCORE * min(1.0, len(query) / 2) if min_score is None else min_score
         ranked = sorted(((s, i) for i, s in enumerate(_bm25_scores(index, query)) if s >= floor), reverse=True)
         return [dict(chunks[i], score=round(s, 2)) for s, i in ranked[:k]]
     min_score = 1.0 if min_score is None else min_score
