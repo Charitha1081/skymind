@@ -8,7 +8,7 @@ import examples, main, providers
 
 srv = fakeredis.FakeServer()
 main.redis.from_url = lambda *a, **k: fakeredis.FakeAsyncRedis(server=srv, decode_responses=True)
-main.STREAM_MOCK_DELAY_S = 0
+main.settings.STREAM_MOCK_DELAY_S = 0
 
 
 def events(text: str) -> list[tuple[str, dict]]:
@@ -123,8 +123,8 @@ with TestClient(main.app) as c:
     print("early errors OK: 404 / 422 before any stream starts")
 
     # 4. a real provider: streaming fails before any text -> the normal call answers instead
-    real = (main.bot_provider, providers.stream, providers.call)
-    main.bot_provider = lambda b: "anthropic"
+    real = (main.orchestrator.bot_provider, providers.stream, providers.call)
+    main.orchestrator.bot_provider = lambda b: "anthropic"
     providers.ANTHROPIC_API_KEY = "test-key"  # (calls are replaced below; nothing reaches the network)
 
     async def stream_fails_early(*a, **k):
@@ -165,7 +165,7 @@ with TestClient(main.app) as c:
         assert ev[-1][0] == "error" and "not available" in ev[-1][1]["detail"], ev
         assert "down" not in ev[-1][1]["detail"], "internal errors are not shown to users"
     finally:
-        main.bot_provider, providers.stream, providers.call = real
+        main.orchestrator.bot_provider, providers.stream, providers.call = real
         providers.ANTHROPIC_API_KEY = ""
     print("fallbacks OK: early failure -> normal call; halfway -> partial + note; both down -> error event")
 print("ALL STREAMING TESTS PASSED")

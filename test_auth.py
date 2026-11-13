@@ -134,12 +134,12 @@ with client() as anon, client() as alice, client() as bob, client() as carol, cl
 
     # admins by Google account
     assert boss.get("/admin/overview").status_code == 401
-    main.ADMIN_EMAILS = {"boss@skymind.dev"}
+    main.settings.ADMIN_EMAILS = {"boss@skymind.dev"}
     ov = boss.get("/admin/overview").json()
     assert {b["owner_email"] for b in ov["bots"]} == {"alice@acme.com"}
     assert boss.get("/me").json()["is_admin"] and not alice.get("/me").json()["is_admin"]
     assert boss.delete(f"/bots/{pub['bot_id']}", headers=H).status_code == 200
-    main.ADMIN_EMAILS = set()
+    main.settings.ADMIN_EMAILS = set()
 
     # owner deletes; sign out ends the session server-side
     assert alice.delete(f"/bots/{restricted['bot_id']}", headers=H).status_code == 200

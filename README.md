@@ -88,7 +88,56 @@ docker compose run --rm -e GEMINI_API_KEY evaluate search --tune
 ```
 Pick the `EMBED_MIN_SIM` with the best balance of found sections and refusals, and set it in `knowledge.py`.
 
-Routing: the router agrees with the easy/hard labels on **97%** of 65 questions (93% before the evaluation exposed "meal *plan*" being treated as a hard question; fixed). The two remaining misses are multi-part questions without a reasoning keyword.
+### Routing: how the router is checked honestly
+
+The router (`router.py`) decides cheap model or strong model. It adds up five explainable signals: the message
+asks for reasoning ("explain", "compare"), asks for several things at once, describes the person's own situation,
+gives specific numbers or times to work with, or needs counting or arithmetic. Two points or more go to the strong
+model, and every answer shows the reasons (`route_reason`).
+
+The first router only looked for reasoning words. It agreed with the easy/hard labels on 97% of the original
+questions, but those were the questions it was written against. On new questions it fell apart, so the router was
+rebuilt and checked on questions it had not been written against:
+
+| Question set | Questions | First router | Current router |
+|---|---|---|---|
+| `questions.yaml` (used while writing both routers) | 65 | 97% | 100% |
+| `questions_heldout.yaml` (used while writing the current router) | 29 | 45% | 97% |
+| `questions_third.yaml` (**not** used to write either router) | 28 | 61% | **89%** |
+
+The honest number is the last row: 89% on questions the router was never tuned to. (That run exposed one bug,
+"how many ... *from* the Dallas area" being read as arithmetic; with the bug fixed the third set scores 93%, but it
+is no longer an untouched test for that fix.) To check a future change fairly, write new questions first.
+
+```bash
+python evaluate.py routing --questions questions_third.yaml      # free, instant
+```
+
+### Answers with real models (Claude, November 2026)
+
+Measured against the live service, document answers only (website lookup off), with the first router:
+
+| Questions | Setup | Accuracy | Correct refusals | Avg time | $ per 1,000 answers | Sent to strong |
+|---|---|---|---|---|---|---|
+| 73 (`questions.yaml`) | cheap: claude-haiku-5-5 | 94% | 100% | 1.2 s | 0.10 | 0% |
+| 73 | strong: claude-sonnet-5-5 | 97% | 100% | 1.8 s | 2.44 | 100% |
+| 73 | auto (first router) | 94% | 100% | 1.3 s | 0.41 | 10% |
+| 31 (`questions_heldout.yaml`) | cheap: claude-haiku-5-5 | 97% | 100% | 1.4 s | 0.15 | 0% |
+| 31 | strong: claude-sonnet-5-5 | 97% | 100% | 2.4 s | 3.30 | 100% |
+| 31 | auto (first router) | 97% | 100% | 1.3 s | 0.14 | 0% |
+
+What this shows: on document questions the cheap model is almost as accurate as the strong one (same on the new
+set, about two questions behind on the first) at roughly a twentieth of the cost. So most of the saving comes from
+answering with the cheap model at all; the router's job is to find the few questions that need more.
+
+Labels are one person's opinion of what is hard, so `evaluate.py` also judges routing by results. Run all three
+routing settings together and it reports which questions only the strong model got right, whether the router sent
+those to the strong model, and how many questions it sent there without need. `--save results.json` keeps every
+question's answer, model and grade for inspection.
+
+```bash
+python evaluate.py answers --url https://your-service --providers anthropic --routing cheap,strong,auto --pace 4 --save results.json
+```
 
 Answers, mock provider (no AI, extractive baseline):
 
@@ -96,8 +145,6 @@ Answers, mock provider (no AI, extractive baseline):
 |---|---|---|---|
 | mock / keyword search | 93% | 38% | 85% |
 | mock / bm25 search | 91% | 88% | 91% |
-
-Add your real-model rows by running `evaluate answers` with Claude and/or Gemini.
 
 ## Website lookup: documents first, then the company's own site
 
@@ -161,12 +208,12 @@ pip install -r requirements-dev.txt
 python tests/run_all.py
 ```
 
-Ten suites with no network or paid calls: website lookup (strict mode, cache, Claude search with allowed_domains and the fee, fallback when search is off, refusal held back while streaming), streaming (Claude, Gemini and Ollama stream parsers, event order, fallbacks), bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits), Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions), the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
+Eleven suites with no network or paid calls: the model router (each signal, how they add up, forced modes), website lookup (strict mode, cache, Claude search with allowed_domains and the fee, fallback when search is off, refusal held back while streaming), streaming (Claude, Gemini and Ollama stream parsers, event order, fallbacks), bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits), Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions), the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
 
 ## What happens when a question arrives
 
 1. **Retrieve:** find the sections of that company's documents that best match the question (BM25 by default).
-2. **Route:** easy questions go to the cheap model, hard ones (long, code, several questions, "explain", "compare", "why") to the strong model.
+2. **Route:** easy questions go to the cheap model. A question goes to the strong model when it is long, contains code, or shows enough signs of difficulty: it asks for reasoning, asks several things at once, or describes a situation with numbers to work through. The answer says why (`route_reason`).
 3. **Budget guard:** once a bot has used its monthly LLM budget, the strong model is paused and everything goes to the cheap model.
 4. **Answer** from the retrieved sections only. If the answer is not in the documents, the bot says so.
 5. **Remember** the recent messages of that conversation (memory is separate for each bot).
@@ -316,12 +363,29 @@ Interactive docs: http://localhost:8000/docs
 
 ## Files
 
-`main.py` (service and API), `providers.py` (Claude, Gemini, Ollama behind one interface), `auth.py` (Google sign-in, sessions, bot access rules), `evaluate.py` and `questions.yaml` (quality evaluation), `tests/` (test suites), `router.py` (cheap vs strong routing, savings), `planner.py` (capacity and cost), `knowledge.py` (document retrieval), `embeddings.py` (meaning search), `jobs.py` (answer, code reviewer, idea partner), `standards.py` (OWASP, PEP 8, clean code rule sets), `fixer.py` (Suggest fix), `web.py` (website lookup), `improve.py` (unanswered questions and ratings), `ingest.py` (PDF, Word and web page import), `unt_student_services.md` (sample document to upload), `examples.py` (sample customers), `pages.py` (the three pages), `loadtest.py` (load tester), `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
+The service, in the order a request passes through it:
+
+| File | What it holds |
+|---|---|
+| `main.py` | Starts the service and connects the parts below (about 70 lines) |
+| `settings.py` | Every setting an environment variable can change |
+| `runtime.py` | The shared Redis and HTTP connections |
+| `security.py` | Sign-in, admins, bot owners, rate limits, security headers |
+| `routes_bots.py`, `routes_chat.py`, `routes_improve.py`, `routes_admin.py`, `routes_account.py`, `routes_site.py` | The HTTP endpoints, grouped by area |
+| `orchestrator.py` | What happens to one question: access, limits, budget, routing, search, model call with retry and fallback, website lookup, cost and gap logging, streaming |
+| `store.py` | Bots, documents, conversation memory and usage counters in Redis |
+
+The parts the orchestrator uses: `router.py` (cheap or strong model, savings), `providers.py` (Claude, Gemini, Ollama behind one interface), `knowledge.py` (splitting and searching documents), `embeddings.py` (meaning search), `jobs.py` (answer, code reviewer, idea partner), `standards.py` (OWASP, PEP 8, clean code rule sets), `web.py` (website lookup), `improve.py` (unanswered questions and ratings), `fixer.py` (Suggest fix), `ingest.py` (PDF, Word and web page import), `auth.py` (Google sign-in, sessions, bot access rules), `planner.py` (capacity and cost), `pages.py` (the web pages), `examples.py` (sample customers).
+
+Quality and testing: `evaluate.py` with `questions.yaml`, `questions_heldout.yaml` and `questions_third.yaml` (evaluation), `tests/` (eleven test suites), `loadtest.py` (load tester).
+
+Other: `unt_student_services.md` (sample document to upload), `Dockerfile`, `docker-compose.yml`, `render.yaml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
 ## Honest limits
 
 - "Deploy" currently creates an isolated bot (own documents, memory, routing, budget and stats) inside one running service. Giving each customer a separate Kubernetes deployment with autoscaling is the next step.
 - Memory types `summary` and `long_term` are planned. Today every bot keeps the recent messages of each conversation.
+- The router is rule based. It scored 89% on questions it was never tuned to, and "hard" is a human label: on document questions the cheap model was nearly as accurate as the strong one, so how much the router adds over always using the cheap model is still being measured (`evaluate.py answers` reports it). A small classifier model, or escalating only when the cheap answer is weak, are the next steps.
 - BM25 and keyword search can miss questions that use different words than the documents. Hybrid search fixes this but needs a Gemini key, and its threshold is only tuned once you run `evaluate search --tune`.
 - Vectors are stored in Redis next to the bot; for very large document sets a vector database (pgvector) would be the next step.
 - Pages that need JavaScript to show text, and scanned PDFs (images), import as almost no text. Suggest fix reads links in the page's HTML; menus built by JavaScript are not followed, so give it a more specific page (e.g. the FAQ).

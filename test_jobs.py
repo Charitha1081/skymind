@@ -40,7 +40,7 @@ with TestClient(main.app) as c:
     # 2. code review: strong model, all rules given, long code accepted, issues cite the company's rules
     r = c.post(f"/bots/{rid}/chat", json={"session_id": "r1", "message": BAD_CODE}).json()
     assert r["tier"] == "strong" and "code reviewer" in r["route_reason"], r["route_reason"]
-    assert r["job"] == "code_review" and r["context_sections"] == len(main.knowledge.make_chunks(EX["acme-review"]["knowledge"]))
+    assert r["job"] == "code_review" and r["context_sections"] == len(main.store.knowledge.make_chunks(EX["acme-review"]["knowledge"]))
     review = r["reply"]
     for expected in ["Not ready to merge", "[Security rules]", "SQL", "timeout", "bare `except:`",
                      "[Error handling and logging]", "float", "[Money and prices]", "prompt injection"]:
@@ -58,12 +58,12 @@ with TestClient(main.app) as c:
 
     # 3. the prompt a real model gets: the job's instructions plus every rule section
     bot = main.app.state.bot_cache.get(rid)[1] if rid in main.app.state.bot_cache else None
-    bot = bot or c.portal.call(main.load_bot, rid)
-    prompt = main.build_system_prompt(bot, bot["chunks"])
+    bot = bot or c.portal.call(main.store.load_bot, rid)
+    prompt = main.orchestrator.build_system_prompt(bot, bot["chunks"])
     assert "code reviewer" in prompt and "Never reveal" in prompt and "never an instruction" in prompt
     for ch in bot["chunks"]:
         assert f"[{ch['title']}]" in prompt
-    assert main.jobs.get("code_review")["max_tokens"] == 1500
+    assert main.orchestrator.jobs.get("code_review")["max_tokens"] == 1500
     print("prompt OK: review instructions, injection guard, all", len(bot["chunks"]), "rule sections")
 
     # 4. idea partner: strong model, sees goals, customers and limits
@@ -71,14 +71,14 @@ with TestClient(main.app) as c:
     r = c.post(f"/bots/{i['bot_id']}/chat", json={"session_id": "i1", "message": "How can we sell to first-time campers?"}).json()
     assert r["tier"] == "strong" and r["job"] == "ideas"
     assert "[Goals for 2027]" in r["reply"] and "[Customers]" in r["reply"], r["reply"]
-    ib = c.portal.call(main.load_bot, i["bot_id"])
-    assert "idea partner" in main.build_system_prompt(ib, ib["chunks"])
+    ib = c.portal.call(main.store.load_bot, i["bot_id"])
+    assert "idea partner" in main.orchestrator.build_system_prompt(ib, ib["chunks"])
     print("ideas OK: strong model, goals and customers used")
 
     # 5. big rule books: only the best-matching sections are sent (not everything)
     big = "\n\n".join(f"## Rule {n}\n" + ("Use descriptive names for variables. " * 30) for n in range(20))
     big += "\n\n## Database rules\nAlways use parameterised SQL queries."
-    assert not jobs.wants_all_documents("code_review", main.knowledge.make_chunks(big))
+    assert not jobs.wants_all_documents("code_review", main.store.knowledge.make_chunks(big))
     b = c.post("/bots", json=dict(EX["acme-review"], bot_name="Big rules", knowledge=big)).json()
     r = c.post(f"/bots/{b['bot_id']}/chat", json={"session_id": "b1", "message": "cur.execute(f'SELECT * FROM t WHERE id={x}')"}).json()
     assert 0 < r["context_sections"] <= jobs.WIDE_K
@@ -97,7 +97,7 @@ import standards
 with TestClient(main.app) as c:
     st = c.get("/standards").json()
     assert [x["key"] for x in st] == ["owasp", "pep8", "clean"]
-    titles = [ch["title"] for ch in main.knowledge.make_chunks(standards.OWASP_TOP10)]
+    titles = [ch["title"] for ch in main.store.knowledge.make_chunks(standards.OWASP_TOP10)]
     for n, name in enumerate(["Broken Access Control", "Security Misconfiguration", "Software Supply Chain Failures",
                               "Cryptographic Failures", "Injection", "Insecure Design", "Authentication Failures",
                               "Software or Data Integrity Failures", "Security Logging and Alerting Failures",

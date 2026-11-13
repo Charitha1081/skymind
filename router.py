@@ -77,20 +77,80 @@ def _has_keyword(text: str, keyword: str) -> bool:
     )
 
 
+# ---------------------------------------------------------------- difficulty signals
+#
+# classify() adds up a few signals that a message needs the strong model. Each signal is a general
+# property of the message (not a list of topics), so the router can explain every decision:
+#
+#   reasoning   asks to explain, compare, calculate ...                      (HARD_KEYWORDS)
+#   several     asks for two or more things at once                          ("..., and what ...?")
+#   situation   describes the person's case and asks how the rules apply     ("I'm ... . Can I ...?")
+#   specifics   that situation has numbers, times or amounts to work with    ("a $40 tent at 1 PM")
+#   working out needs counting or arithmetic over facts                      ("how many days after")
+#
+# A message goes to the strong model when the signals add up to STRONG_SCORE or more.
+
+STRONG_SCORE = 2
+
+ASK_WORDS = (
+    "what", "which", "where", "when", "who", "whom", "whose", "how", "why", "can", "could", "do", "does",
+    "did", "is", "are", "was", "will", "would", "should", "may", "must", "tell",
+)
+# "..., and what ...", "... and can I ...": a second request joined on to the first one.
+_JOINED_ASK = re.compile(r"\b(?:and|but|or|also|then|plus)\s+(?:then\s+|also\s+)?(?:" + "|".join(ASK_WORDS) + r")\b")
+# The person describes their own case: "I'm ...", "I have ...", "my ...", "if I ...", "it's 9 PM ...".
+_SITUATION = re.compile(
+    r"(?<!do )(?<!can )(?<!could )(?<!should )(?<!would )(?<!must )(?<!may )(?<!will )(?<!did )\b(?:i'm|i am|i've|i have|i had|i was|i will|i'll|i want|i need|i plan|i missed|i forgot|i lost|i booked|"
+    r"i graduated|i live|i study|i work|i drive|i commute|i start|i ordered|i bought|i paid|"
+    r"if i|if my|if we|if it|my \w+ (?:is|has|was|did|are|have)|it's \d|it is \d)\b"
+)
+_NUMBER = re.compile(r"[$€£]\s?\d|\b\d+(?:[.,:]\d+)?\s?(?:am|pm|%|gpa|days?|hours?|weeks?|months?|years?|dollars?)?\b")
+_WORKING_OUT = re.compile(
+    r"\bhow (?:many|much|long|far|soon) [^?.!]*\b(?:after|before|between|until|since|left|apart|in total|altogether)\b"
+    r"|\b(?:in total|altogether|add up|adds up)\b"
+)
+
+
+def _asks(text: str) -> int:
+    """How many separate things the message asks for."""
+    questions = text.count("?")
+    joined = len(_JOINED_ASK.findall(text))
+    return max(questions, 1) + joined if (questions or joined) else 0
+
+
+def signals(message: str) -> list[tuple[str, int, str]]:
+    """Every difficulty signal found in the message, as (name, points, explanation)."""
+    text = message.lower().replace("\u2019", "'")
+    found = []
+    for keyword in HARD_KEYWORDS:
+        if _has_keyword(text, keyword):
+            found.append(("reasoning", 2, f"needs reasoning ('{keyword}')"))
+            break
+    asks = _asks(text)
+    if asks >= 2:
+        found.append(("several", 2, f"asks {asks} things at once"))
+    if _SITUATION.search(text):
+        found.append(("situation", 1, "applies the rules to the person's situation"))
+        if _NUMBER.search(text):
+            found.append(("specifics", 1, "with specific numbers or times"))
+    if _WORKING_OUT.search(text):
+        found.append(("working out", 2, "needs counting or arithmetic"))
+    return found
+
+
 def classify(message: str) -> tuple[str, str]:
     """Return (tier, reason) where tier is 'cheap' or 'strong'."""
-    text = message.lower()
     words = len(message.split())
-
     if words >= LONG_MESSAGE_WORDS:
         return "strong", f"long message ({words} words)"
     if "```" in message or message.count("\n") >= 3:
         return "strong", "contains code or many lines"
-    if message.count("?") >= 2:
-        return "strong", "several questions in one message"
-    for keyword in HARD_KEYWORDS:
-        if _has_keyword(text, keyword):
-            return "strong", f"needs reasoning ('{keyword}')"
+    found = signals(message)
+    score = sum(points for _, points, _ in found)
+    if score >= STRONG_SCORE:
+        return "strong", "; ".join(why for _, _, why in found)
+    if found:
+        return "cheap", "simple question (" + found[0][2] + ", not enough for the strong model)"
     return "cheap", "short, simple question"
 
 

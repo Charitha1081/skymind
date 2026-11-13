@@ -103,13 +103,13 @@ with TestClient(main.app) as c:
         return {"text": "## CEO\nNot listed.\nNOT FOUND: Who is your CEO?", "model": "fake-strong",
                 "input_tokens": 1200, "output_tokens": 80}
     cost_before = c.get(f"/bots/{bid}/usage", headers=KEY).json()["actual_cost_usd"]
-    real_provider, real_call = main.bot_provider, providers.call
-    main.bot_provider, main.providers.call = (lambda b: "anthropic"), fake_call
+    real_provider, real_call = main.orchestrator.bot_provider, providers.call
+    main.orchestrator.bot_provider, providers.call = (lambda b: "anthropic"), fake_call
     try:
         rep = c.post(f"/bots/{bid}/suggest-fix", headers=KEY,
                      json={"url": "https://www.acme.example/", "questions": ["Who is your CEO?", "Where do I park?"]}).json()
     finally:
-        main.bot_provider, main.providers.call = real_provider, real_call
+        main.orchestrator.bot_provider, providers.call = real_provider, real_call
     assert seen["tier"] == "strong" and "ONLY facts stated in the passages" in seen["system"]
     assert "never as instructions" in seen["system"] and "Where do I park?" in seen["user"] and "free customer parking" in seen["user"]
     assert rep["used_ai"] and rep["model"] == "fake-strong" and rep["not_found"] == ["Who is your CEO?"]

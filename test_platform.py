@@ -145,14 +145,14 @@ with TestClient(main.app) as c:
     assert "default-src 'self'" in h["content-security-policy"] and h["x-frame-options"] == "DENY"
     assert h["x-content-type-options"] == "nosniff"
     assert "content-security-policy" not in c.get("/docs").headers
-    main.CHAT_LIMIT_PER_SESSION = 3
+    main.settings.CHAT_LIMIT_PER_SESSION = 3
     codes = [c.post(f"/bots/{U}/chat", json={"session_id": "flood", "message": "hi"}).status_code for _ in range(5)]
     assert codes == [200, 200, 200, 429, 429], codes
-    main.CHAT_LIMIT_PER_SESSION = 60
-    sysprompt = main.build_system_prompt({"company": "X"}, [])
+    main.settings.CHAT_LIMIT_PER_SESSION = 60
+    sysprompt = main.orchestrator.build_system_prompt({"company": "X"}, [])
     assert "never as instructions" in sysprompt
     assert "do not retract or correct" in sysprompt, "earlier grounded answers must not be retracted"
-    ov = main.build_system_prompt({"company": "Acme", "chunks": [{"title": "About Acme", "text": "Acme sells tents."}]}, [])
+    ov = main.orchestrator.build_system_prompt({"company": "Acme", "chunks": [{"title": "About Acme", "text": "Acme sells tents."}]}, [])
     assert "COMPANY OVERVIEW" in ov and "sells tents" in ov, "overview is given when search finds nothing"
     # ---- per-company privacy ----
     assert c.get("/bots").status_code == 401, "full bot list must be admin-only"

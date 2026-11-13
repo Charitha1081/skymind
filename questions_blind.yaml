@@ -1,0 +1,24 @@
+# SkyMind blind test set: 20 questions written by Charitha and Rakesh without reading router.py
+# or the other question files. Nothing in SkyMind was tuned to these. Same grading rules as questions.yaml.
+# Use with: python evaluate.py answers --questions questions_blind.yaml
+
+- {bot: unt, level: easy, section: Housing, q: "How many residence halls does UNT have?", must: ["15"]}
+- {bot: unt, level: easy, section: Career Center and jobs, q: "Where is the Career Center located?", must: ["sage hall"]}
+- {bot: unt, level: easy, section: "EUID, passwords and IT help", q: "What number do I call if I forget my UNT password?", must: ["940-565-2324"]}
+- {bot: unt, level: easy, section: "Spring 2027 academic calendar", q: "When does spring 2027 semester start?", must: ["january 11|jan 11"]}
+- {bot: unt, level: hard, section: Meal plans, q: "I'm a first year student living on campus. Can I choose not to get a meal plan?", must: ["unlimited"]}
+- {bot: unt, level: hard, section: "Buses, shuttles and getting around", q: "I'm a commuter student and I take DCTA buses to UNT. Do I need to pay separately for a bus pass?", must: ["student id|no extra cost|included in tuition|no separate pass"]}
+- {bot: unt, level: hard, section: "Spring 2027 academic calendar", q: "I missed the deadline to drop a class without getting a W. What's the last date I can drop with a W in spring 2027?", must: ["april 9|apr 9"]}
+- {bot: unt, level: hard, section: Career Center and jobs, q: "I need help with my resume but I don't have time to schedule an appointment. Can I still get help?", must: ["drop-in|drop in"]}
+- {bot: unt, level: hard, section: "Student Health and Wellness Center (doctor visits)", q: "I have a doctor appointment at the health center but I live in Texas and can't come to campus. Can I do it online?", must: ["telemedicine|telehealth"]}
+- {bot: unt, refuse: true, level: easy, section: Parking permits, q: "How much does a Resident Reserved parking permit cost?"}
+- {bot: unt, level: easy, section: Size and enrollment, q: "How many degree programs does UNT offer?", must: ["243"]}
+- {bot: unt, level: easy, section: "Buses, shuttles and getting around", q: "What time does Night Flight start on weekdays?", must: ["11 pm|11pm|11:00"]}
+- {bot: unt, level: easy, section: Counseling and mental health, q: "What's the phone number for UNT Counseling and Testing Services?", must: ["940-565-2741"]}
+- {bot: unt, level: easy, section: Tutoring and libraries, q: "Where can I go for free walk-in tutoring?", must: ["willis"]}
+- {bot: unt, level: hard, section: Meal plans, q: "I'm a graduate student who lives off campus. Am I required to purchase a meal plan?", must: ["optional"]}
+- {bot: unt, level: hard, section: "EUID, passwords and IT help", q: "I forgot both my EUID and password and can't log into myUNT. How can I recover them?", must: ["forgot"]}
+- {bot: unt, level: hard, section: Counseling and mental health, q: "I'm feeling really overwhelmed and need someone to talk to after 5 PM. Who should I contact?", must: ["940-565-2741", "option 1"]}
+- {bot: unt, level: hard, section: Parking permits, q: "I want to park close to my classes but I don't want to pay for a garage. Which commuter permit should I look into?", must: ["eagle"]}
+- {bot: unt, level: hard, section: "AI Expo by SSAI, November 16, 2026", q: "I want to present my AI project at the November 2026 AI Expo, but I missed the entry deadline. Can I still attend?", must: ["registration form|register"]}
+- {bot: unt, refuse: true, level: easy, q: "Who is teaching the spring 2027 machine learning course at UNT?"}

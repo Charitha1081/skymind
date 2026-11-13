@@ -1,0 +1,38 @@
+# SkyMind held-out evaluation set (written separately from questions.yaml).
+# Same grading rules as questions.yaml. Use with: python evaluate.py answers --questions questions_heldout.yaml
+# Do not tune the router against this file. Use it only to check the router once.
+
+# ------------------------------------------------------------------ easy
+- {bot: unt, level: easy, section: About UNT, q: "Where is UNT located?", must: ["denton"]}
+- {bot: unt, level: easy, section: Size and enrollment, q: "How many undergraduate students were enrolled in fall 2025?", must: ["34,149|34149"]}
+- {bot: unt, level: easy, section: About UNT, q: "What is UNT's Carnegie classification?", must: ["r1"]}
+- {bot: unt, level: easy, section: How to apply as a first-year (freshman) student, q: "What is the freshman application fee for U.S. citizens?", must: ["75"]}
+- {bot: unt, level: easy, section: How to apply as a first-year (freshman) student, q: "What is UNT's SAT score code?", must: ["6481"]}
+- {bot: unt, level: easy, section: How to apply as a first-year (freshman) student, q: "What is UNT's ACT score code?", must: ["4136"]}
+- {bot: unt, level: easy, section: Housing, q: "How many residence halls does UNT have?", must: ["15"]}
+- {bot: unt, level: easy, section: Dining, q: "How many restaurants are in Eagle Landing?", must: ["seven|7"]}
+- {bot: unt, level: easy, section: Parking permits, q: "What is the phone number for Transportation Services?", must: ["940-565-3020"]}
+- {bot: unt, level: easy, section: "EUID, passwords and IT help", q: "What is the UIT Help Desk phone number?", must: ["940-565-2324"]}
+- {bot: unt, level: easy, section: "Buses, shuttles and getting around", q: "What hours does Night Flight run on Friday?", must: ["11 pm|11pm|11:00|23:00", "2 am|2am|2:00"]}
+- {bot: unt, level: easy, section: Career Center and jobs, q: "Where is the Career Center?", must: ["sage hall"]}
+- {bot: unt, level: easy, section: "Spring 2027 academic calendar", q: "When do classes begin in spring 2027?", must: ["january 11|jan 11"]}
+- {bot: unt, refuse: true, level: easy, section: Housing, q: "How much does a single room cost per semester?"}
+- {bot: unt, refuse: true, level: easy, section: Meal plans, q: "How much is the Unlimited Meal Plan this year?"}
+
+# ------------------------------------------------------------------ hard
+- {bot: unt, level: hard, section: How to apply as a first-year (freshman) student, q: "I'm an international applicant with no SAT score and a 2.8 GPA. Could I still be considered, and what fee would I pay?", must: ["3.0", "85"]}
+- {bot: unt, level: hard, section: Meal plans, q: "I'm a first-year student who will live on campus. Which meal plan must I have, and could a graduate student choose the same one?", must: ["unlimited", "optional"]}
+- {bot: unt, level: hard, section: Dining, q: "I have a food allergy. Which of UNT's dining halls is safest for me, and how does it differ from Eagle Landing?", must: ["kitchen west", "big 8|allergen"]}
+- {bot: unt, level: hard, section: "Student Health and Wellness Center (doctor visits)", q: "I'm a student in Texas and can't come to campus. Can I see a doctor without coming in, and what should I bring to the visit?", must: ["telemedicine|telehealth|video", "insurance"]}
+- {bot: unt, level: hard, section: "Student Health and Wellness Center (doctor visits)", q: "I booked a health center appointment but can't make it. What happens if I just don't show up, and what should I do instead?", must: ["no-show|no show", "2793"]}
+- {bot: unt, level: hard, section: "Spring 2027 academic calendar", q: "I want to drop a class and keep it off my transcript as a W. Until what date can I do that, and what is the last day to drop without a W?", must: ["april 9|apr 9", "january 22|jan 22"]}
+- {bot: unt, level: hard, section: "Spring 2027 academic calendar", q: "How many days after classes begin is the census date, and what is the last day to swap sections?", must: ["11", "january 15|jan 15"]}
+- {bot: unt, level: hard, section: "Buses, shuttles and getting around", q: "I commute by bus and have a long drive home over winter break. Do I pay extra for the bus, and where would I catch FlixBus home?", must: ["no extra cost|free|no separate pass", "lot 20"]}
+- {bot: unt, level: hard, section: "Parking permits", q: "I'm a commuter who lives far away and takes the bus. Which permit fits me best, and what shuttle service comes with it?", must: ["remote", "dcta"]}
+- {bot: unt, level: hard, section: "Counseling and mental health", q: "It's 9 PM on a weekday and I feel overwhelmed. Which phone number should I call, and what if I'm in danger right now?", must: ["940-565-2741", "911|988"]}
+- {bot: unt, level: hard, section: How to apply as a first-year (freshman) student, q: "What does a first-year student need to do after submitting the application to make sure their admission is complete?", must: ["myunt", "euid"]}
+- {bot: unt, level: hard, section: "AI Expo by SSAI, November 16, 2026", q: "I'm not presenting at the AI Expo but a friend is. Can I still come, and what would my friend's team win for first place?", must: ["registration form|fill", "200"]}
+- {bot: unt, level: hard, section: "Career Center and jobs", q: "I graduated two years ago and want career coaching. Which system do I use, and where do I find jobs and interviews?", must: ["handshake"]}
+- {bot: unt, level: hard, section: "EUID, passwords and IT help", q: "I forgot my password and my EUID. What should I do first, and what do I need to activate my account?", must: ["forgot your euid|forgot", "birth date|birthdate"]}
+- {bot: unt, level: hard, section: "Tutoring and libraries", q: "Where can I get help with an essay for free without booking ahead, and which services are involved?", must: ["willis", "writing center"]}
+- {bot: unt, level: hard, section: "Housing contact", q: "I want to ask about housing by phone. What number do I call, and where is the office located on campus?", must: ["940-565-2610", "welcome center"]}

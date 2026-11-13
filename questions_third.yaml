@@ -1,0 +1,37 @@
+# SkyMind third test set (fresh questions, written after the held-out results).
+# Same grading rules as questions.yaml. Use with: python evaluate.py answers --questions questions_third.yaml
+# Use this set only to check a router change once, after the change is finished.
+
+# ------------------------------------------------------------------ easy
+- {bot: unt, level: easy, section: Buses, shuttles and getting around, q: "Which app tracks DCTA buses?", must: ["transit"]}
+- {bot: unt, level: easy, section: Career Center and jobs, q: "What is the Career Center's suite number?", must: ["202"]}
+- {bot: unt, level: easy, section: "AI Expo by SSAI, November 16, 2026", q: "How many organizations from the Dallas-Fort Worth area have industry tables at the AI Expo?", must: ["ten|10"]}
+- {bot: unt, level: easy, section: Counseling and mental health, q: "What is the phone number for Counseling and Testing Services?", must: ["940-565-2741"]}
+- {bot: unt, level: easy, section: "EUID, passwords and IT help", q: "Which building is the UIT Help Desk in?", must: ["sage hall"]}
+- {bot: unt, level: easy, section: "AI Expo by SSAI, November 16, 2026", q: "What is the third place prize at the AI Expo?", must: ["100"]}
+- {bot: unt, level: easy, section: Housing contact, q: "What email address do I use to contact Housing?", must: ["housinginfo@unt.edu"]}
+- {bot: unt, level: easy, section: Meal plans, q: "Where do I buy a meal plan?", must: ["mealplans.unt.edu"]}
+- {bot: unt, level: easy, section: Colleges and schools, q: "Which school is the Mayborn?", must: ["journalism"]}
+- {bot: unt, level: easy, section: Counseling and mental health, q: "Where is walk-in crisis help on weekdays?", must: ["chestnut hall"]}
+- {bot: unt, level: easy, section: "Spring 2027 academic calendar", q: "What is the last day to add a class in spring 2027?", must: ["january 15|jan 15"]}
+- {bot: unt, level: easy, section: "Spring 2027 academic calendar", q: "When does spring break start in 2027?", must: ["march 8|mar 8"]}
+- {bot: unt, level: easy, section: Size and enrollment, q: "How many bachelor's programs does UNT offer?", must: ["116"]}
+- {bot: unt, refuse: true, level: easy, section: Parking permits, q: "What does a residence lot parking permit cost?"}
+- {bot: unt, refuse: true, level: easy, section: Financial aid and tuition, q: "What is the tuition for graduate students?"}
+
+# ------------------------------------------------------------------ hard
+- {bot: unt, level: hard, section: Dining, q: "My roommate has a food allergy. Would Kitchen West be safe for her, and is Eagle Landing described as allergen-free too?", must: ["kitchen west", "big 8|allergen"]}
+- {bot: unt, level: hard, section: Meal plans, q: "I want to skip the Unlimited plan as a first-year student living on campus. Is that allowed, and what else could I choose?", must: ["unlimited", "required|must"]}
+- {bot: unt, level: hard, section: "Student Health and Wellness Center (doctor visits)", q: "I missed my doctor appointment and didn't cancel it. What is the rule, and how do I cancel or reschedule next time?", must: ["no-show|no show", "2793"]}
+- {bot: unt, level: hard, section: "Spring 2027 academic calendar", q: "I'm thinking about dropping a class after the census date but before April 9. What grade would I get on my transcript?", must: ["april 9|apr 9", "grade of w|a w"]}
+- {bot: unt, level: hard, section: How to apply as a first-year (freshman) student, q: "Which score codes go on my application, and do I need both the SAT and the ACT?", must: ["6481", "4136"]}
+- {bot: unt, level: hard, section: "Parking permits", q: "I drive to campus from outside Denton. Compare the Eagle permit with Off-Campus Parking, and tell me which one includes a bus.", must: ["off-campus|off campus", "dcta"]}
+- {bot: unt, level: hard, section: "Buses, shuttles and getting around", q: "I study on campus until 1 AM on a weeknight and need a ride home. Is there a free option?", must: ["night flight", "2 am|2am"]}
+- {bot: unt, level: hard, section: How to apply as a first-year (freshman) student, q: "Summarize the steps after I apply, and tell me how decisions are timed.", must: ["myunt", "rolling"]}
+- {bot: unt, level: hard, section: Career Center and jobs, q: "I graduated five years ago. Which system should I use for career help, and how is that different from current students?", must: ["handshake", "more than a year|over a year|a year"]}
+- {bot: unt, level: hard, section: "EUID, passwords and IT help", q: "I'm on the EUID page and lost my EUID. What information do I need to activate it?", must: ["birth date|birthdate", "last name"]}
+- {bot: unt, level: hard, section: "Counseling and mental health", q: "It's Saturday night and I'm in crisis. Which resources can I use, and what number is the national line?", must: ["988", "911"]}
+- {bot: unt, level: hard, section: Meal plans, q: "Is a graduate student who lives on campus required to buy a meal plan? Why or why not?", must: ["optional", "first-year|first year"]}
+- {bot: unt, level: hard, section: Housing, q: "How do residence halls, Living Learning Communities and the Housing Portal fit together when I apply for on-campus housing?", must: ["housing portal", "living learning"]}
+- {bot: unt, level: hard, section: "Spring 2027 academic calendar", q: "I start classes in January 2027. When is the census date, and how many days after classes begin is it?", must: ["january 22|jan 22", "11"]}
+- {bot: unt, level: hard, section: Tutoring and libraries, q: "I have a paper due tomorrow. Should I go to the free tutoring at the libraries or to the Writing Center, and why?", must: ["willis", "writing center"]}

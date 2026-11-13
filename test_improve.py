@@ -80,16 +80,16 @@ with TestClient(main.app) as c:
 # 6. sample bots pick up new documents after a code update (Redis outlives a redeploy)
 import json
 async def seed_check():
-    main.SEED_EXAMPLES = True
+    main.settings.SEED_EXAMPLES = True
     r = main.app.state.redis
-    await main.seed_examples()
-    raw = json.loads(await r.get(main.bot_key("unt-helper")))
+    await main.store.seed_examples()
+    raw = json.loads(await r.get(main.store.bot_key("unt-helper")))
     assert raw["sample_hash"] and any(c["title"] == "Meal plans" for c in raw["chunks"])
     raw["chunks"], raw["sample_hash"] = [{"title": "Old", "text": "old facts"}], "old"
-    await r.set(main.bot_key("unt-helper"), json.dumps(raw))
+    await r.set(main.store.bot_key("unt-helper"), json.dumps(raw))
     await r.delete("seed_lock")
-    await main.seed_examples()
-    raw = json.loads(await r.get(main.bot_key("unt-helper")))
+    await main.store.seed_examples()
+    raw = json.loads(await r.get(main.store.bot_key("unt-helper")))
     assert any(c["title"] == "Meal plans" for c in raw["chunks"]), "sample bot not refreshed"
 with TestClient(main.app) as c2:
     c2.portal.call(seed_check)

@@ -209,8 +209,14 @@ async def deploy(client, base, bot, provider, routing, search):
 async def ask(client, base, bot_id, q, pace, attempts=3):
     for attempt in range(attempts):
         t0 = time.perf_counter()
-        r = await client.post(f"{base}/bots/{bot_id}/chat",
-                              json={"session_id": f"eval-{q['id']}-{attempt}", "message": q["q"]})
+        try:
+            r = await client.post(f"{base}/bots/{bot_id}/chat",
+                                  json={"session_id": f"eval-{q['id']}-{attempt}", "message": q["q"]})
+        except httpx.HTTPError as err:  # dropped connection or timeout: wait and try again
+            if attempt < attempts - 1:
+                await asyncio.sleep(max(pace, 1) * 4 * (attempt + 1))
+                continue
+            return {"error": type(err).__name__}, 0.0
         ms = (time.perf_counter() - t0) * 1000
         if r.status_code == 200:
             return r.json(), ms
@@ -266,7 +272,34 @@ def summarize(name, res):
     }
 
 
-async def eval_answers(qs, base, provider_list, routings, searches, pace, min_accuracy, show, limit):
+def outcome_report(by_routing: dict) -> list[str]:
+    """Judge the router by results, not labels: which questions did only the strong model get right?"""
+    cheap, strong, auto = (by_routing.get(k) for k in ("cheap", "strong", "auto"))
+    if not (cheap and strong and auto):
+        return []
+    rows = list(zip(cheap, strong, auto))
+    needed = [(c, s, a) for c, s, a in rows if not c["ok"] and s["ok"]]          # only the strong model got it right
+    wasted = [a for c, s, a in rows if c["ok"] and a["data"].get("tier") == "strong"]  # cheap was enough, auto paid for strong
+    caught = [a for _, _, a in needed if a["data"].get("tier") == "strong"]
+    out = ["", "### Routing judged by results", "",
+           f"- Questions only the strong model answered correctly: {len(needed)} of {len(rows)}."
+           + (f" The router sent {len(caught)} of them to the strong model." if needed else ""),
+           f"- Questions the router sent to the strong model although the cheap model also got them right: {len(wasted)}.",
+           f"- Questions neither model got right: {sum(1 for c, s, _ in rows if not c['ok'] and not s['ok'])} "
+           "(a document or search problem, not a model problem)."]
+    for c, s, a in needed:
+        out.append(f"  - needed strong, routed {a['data'].get('tier', '?')} ({a['data'].get('route_reason', '')}): {c['q']['q']}")
+    return out
+
+
+def save_results(path: str, saved: list[dict]) -> None:
+    import json
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(saved, f, indent=1, ensure_ascii=False)
+    print(f"Saved {len(saved)} per-question results to {path}")
+
+
+async def eval_answers(qs, base, provider_list, routings, searches, pace, min_accuracy, show, limit, save=""):
     base = base.rstrip("/")
     if limit:
         qs = qs[:limit]
@@ -277,8 +310,9 @@ async def eval_answers(qs, base, provider_list, routings, searches, pace, min_ac
         except httpx.HTTPError as err:
             raise SystemExit(f"Cannot reach SkyMind at {base} ({type(err).__name__}). Is docker compose up running?")
         ready = {p["name"]: p for p in info["providers"] if p["available"]}
-        rows = []
+        rows, saved, outcomes = [], [], []
         for provider in provider_list:
+            by_routing = {}
             if provider not in ready:
                 print(f"Skipping {provider}: not set up on the server (add its API key or URL).")
                 continue
@@ -288,11 +322,22 @@ async def eval_answers(qs, base, provider_list, routings, searches, pace, min_ac
                 model = {"cheap": p["cheap_model"], "strong": p["strong_model"]}.get(routing, f"{p['cheap_model']} + {p['strong_model']}")
                 print(f"Evaluating {name} ({model}) on {len(qs)} questions...")
                 res = await eval_setup(client, base, qs, provider, routing, search, pace, show)
+                if len(searches) == 1:
+                    by_routing[routing] = res
+                saved += [{"setup": name, "id": x["q"]["id"], "bot": x["q"]["bot"], "level": x["q"].get("level"),
+                           "refuse": bool(x["q"].get("refuse")), "question": x["q"]["q"], "correct": bool(x["ok"]),
+                           "tier": x["data"].get("tier"), "model": x["data"].get("model"),
+                           "route_reason": x["data"].get("route_reason"), "ms": round(x["ms"]),
+                           "cost_usd": x["data"].get("cost_usd"), "reply": x["data"].get("reply", x["data"].get("error"))}
+                          for x in res]
                 s = summarize(name, res)
                 s["model"] = model
                 rows.append(s)
                 print(f"  accuracy {pct(s['accuracy'])}, refusals {pct(s['refusals'])}, "
                       f"avg {s['avg_ms']:.0f} ms, ${s['cost_per_1k']:.4f} per 1,000 answers, errors {s['errors']}")
+            outcomes += outcome_report(by_routing)
+    if save and saved:
+        save_results(save, saved)
     if not rows:
         return "## Answers\n\nNo provider was available to evaluate."
     out = ["## Answers", "",
@@ -309,6 +354,7 @@ async def eval_answers(qs, base, provider_list, routings, searches, pace, min_ac
                    f"({pct(best['overall'])} overall, ${best['cost_per_1k']:.4f} per 1,000 answers).")
     else:
         out.append(f"No real-model setup reached the {pct(min_accuracy)} quality bar without errors.")
+    out += outcomes
     return "\n".join(out)
 
 
@@ -325,6 +371,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0, help="only the first N questions (quick check)")
     ap.add_argument("--tune", action="store_true", help="also show how the BM25 minimum score changes results")
     ap.add_argument("--show", action="store_true", help="print every question and answer")
+    ap.add_argument("--save", default="", help="write every question's result (answer, model, correct or not) to this JSON file")
     args = ap.parse_args()
 
     reports = {"search", "routing", "answers"} if "all" in args.reports else set(args.reports)
@@ -342,7 +389,7 @@ def main() -> None:
             qs, args.url, [p.strip() for p in args.providers.split(",") if p.strip()],
             [r.strip() for r in args.routing.split(",") if r.strip()],
             [s.strip() for s in args.search.split(",") if s.strip() in knowledge.SEARCH_METHODS] or ["bm25"], args.pace,
-            args.min_accuracy, args.show, args.limit)))
+            args.min_accuracy, args.show, args.limit, args.save)))
     print()
     print("\n\n".join(parts))
     print()

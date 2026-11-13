@@ -94,7 +94,7 @@ with TestClient(main.app) as c:
     assert big.status_code == 413, big.status_code
     assert c.post("/import/url", json={"url": "http://127.0.0.1:8000/admin/overview"}).status_code == 422
     assert c.post("/import/url", json={"url": "http://169.254.169.254/latest/meta-data/"}).status_code == 422
-    main.IMPORT_LIMIT_PER_HOUR = 2
+    main.settings.IMPORT_LIMIT_PER_HOUR = 2
     codes = [c.post("/import/file", files={"file": ("n.txt", b"hello there", "text/plain")}).status_code for _ in range(3)]
     assert codes == [200, 429, 429] or codes[-1] == 429, codes
     assert c.post("/import/file", files={"file": ("n.txt", b"hello there", "text/plain")}, headers=H).status_code == 200, "admins not limited"

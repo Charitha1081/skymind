@@ -8,7 +8,7 @@ import examples, improve, ingest, main, providers, web
 
 srv = fakeredis.FakeServer()
 main.redis.from_url = lambda *a, **k: fakeredis.FakeAsyncRedis(server=srv, decode_responses=True)
-main.STREAM_MOCK_DELAY_S = 0
+main.settings.STREAM_MOCK_DELAY_S = 0
 
 # the fake Acme website from the Suggest fix tests (no network)
 src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_fix.py")).read()
@@ -140,8 +140,8 @@ with TestClient(main.app) as c:
                                 "title": "Directions", "cited_text": "free customer parking"}]}],
             "usage": {"input_tokens": 2000, "output_tokens": 40, "server_tool_use": {"web_search_requests": 1}}})
     claude.search_off = False
-    real = (main.bot_provider, main.app.state.http, providers.ANTHROPIC_API_KEY)
-    main.bot_provider = lambda b: "anthropic"
+    real = (main.orchestrator.bot_provider, main.app.state.http, providers.ANTHROPIC_API_KEY)
+    main.orchestrator.bot_provider = lambda b: "anthropic"
     providers.ANTHROPIC_API_KEY = "test-key"
     main.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(claude))
     try:
@@ -161,5 +161,5 @@ with TestClient(main.app) as c:
         assert r["answered_from"] == "website" and "$35" in r["reply"] and r["web_sources"][0]["url"] == "https://www.acme.example/rentals/", r
         print("fallback OK: Claude web search off -> SkyMind's own reader")
     finally:
-        main.bot_provider, main.app.state.http, providers.ANTHROPIC_API_KEY = real
+        main.orchestrator.bot_provider, main.app.state.http, providers.ANTHROPIC_API_KEY = real
 print("ALL WEBSITE TESTS PASSED")
