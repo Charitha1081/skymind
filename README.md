@@ -1,16 +1,16 @@
 # SkyMind
 
-AI orchestration platform. A company says what it needs ("a chatbot for our customers, about 500 users at a time, answers in under 4 seconds, $600 a month"), adds its documents, and SkyMind plans the capacity and cost, deploys the bot, routes each question to a cheap or a strong model, keeps it under budget, and shows how it is doing.
+SkyMind is an AI orchestration platform. A company says what it needs ("a chatbot for our customers, around 500 users at a time, answers in under 4 seconds, $600 a month"), adds its documents, and SkyMind works out the capacity and cost, deploys the bot, sends each question to a cheap or a strong model, keeps spending under budget, and reports how it is doing.
 
 ## The three pages
 
 | Page | Who it is for | What it does |
 |---|---|---|
-| `/deploy` | A company | Describe needs (users, latency, memory, model routing, budget), add documents, click **Deploy bot**. Shows the plan: servers, expected latency, monthly cost. |
+| `/deploy` | A company | Describe needs (users, latency, memory, model routing, budget), add documents, click Deploy bot. Shows the plan: servers, expected latency, monthly cost. |
 | `/chat/{bot_id}` | The company's end users | Chat with the deployed bot. It answers only from that company's documents and shows which model answered. |
 | `/admin` | SkyMind operators (us) | Every customer bot: plan vs actual cost, requests, latency (avg and p95), money saved by routing, budget-guard status. Delete a bot or reset counters. |
 
-`/` is a start page linking to all three.
+`/` is a start page that links to all three.
 
 ## Run it
 
@@ -18,31 +18,31 @@ AI orchestration platform. A company says what it needs ("a chatbot for our cust
 docker compose up --build
 ```
 
-Then open http://localhost:8000. The server window prints a line like `SkyMind admin token: AbC123...`. You need it to open **/admin**. It starts in **mock** mode (no API key needed), where answers are taken straight from the matching document section.
+Open http://localhost:8000. The server window prints a line like `SkyMind admin token: AbC123...`; you need it to open `/admin`. It starts in mock mode (no API key needed), where answers come straight from the matching document section.
 
 Quick demo:
-1. Open **/deploy** and click **Load: UNT Helper**, then **Deploy bot**. Do the same for **Acme Support**.
-2. Open each bot's chat link and ask questions ("How many colleges does UNT have?", "When is the AI Expo?", "What is the return policy?").
-3. Watch **/admin** update live.
+1. Open `/deploy`, click Load: UNT Helper, then Deploy bot. Do the same for Acme Support.
+2. Open each bot's chat link and ask a few questions ("How many colleges does UNT have?", "When is the AI Expo?", "What is the return policy?").
+3. Watch `/admin` update live.
 
 ### Use a real model (Claude)
 
-1. At the Claude Console (console.anthropic.com), add a few dollars of credit, **set a monthly spend limit** (e.g. $10) and create an API key.
+1. At the Claude Console (console.anthropic.com), add a few dollars of credit, set a monthly spend limit (say $10), and create an API key.
 2. Locally (Windows):
    ```
    set ANTHROPIC_API_KEY=your-key-here
    docker compose up --build
    ```
-   On Render: in the service's **Environment** tab add `ANTHROPIC_API_KEY`, and delete `LLM_PROVIDER` if it is there (or set it to `anthropic`). With a key and no `LLM_PROVIDER`, SkyMind uses Claude automatically.
+   On Render: in the service's Environment tab add `ANTHROPIC_API_KEY`, and delete `LLM_PROVIDER` if it is there (or set it to `anthropic`). With a key and no `LLM_PROVIDER`, SkyMind uses Claude automatically.
 3. Never put the key in a file or on GitHub.
 
-Easy questions go to Claude Haiku 5.5 ($0.10 / $0.50 per million input/output tokens) and hard ones to Claude Sonnet 5.5 ($2 / $10). A typical answer costs about $0.0001 on Haiku. Reliability: a failed or overloaded call is retried once, and if the strong model is still unavailable the cheap model answers (shown as the route reason). Bad keys fail fast with a plain message; details go only to the server log. `MAX_ANSWER_TOKENS` (512) caps answer length and cost.
+Easy questions go to Claude Haiku 5.5 ($0.10 / $0.50 per million input/output tokens) and hard ones to Claude Sonnet 5.5 ($2 / $10). A typical answer costs about $0.0001 on Haiku. If a call fails or is overloaded it is retried once, and if the strong model is still unavailable the cheap model answers (the route reason says so). Bad keys fail fast with a plain message, and the details go only to the server log. `MAX_ANSWER_TOKENS` (512) caps answer length and cost.
 
-Do not run the load test against a real model: it refuses unless you add `--allow-real`, because it would send thousands of paid requests.
+Don't run the load test against a real model. It refuses unless you add `--allow-real`, because it would send thousands of paid requests.
 
 ## Any AI model (model-agnostic)
 
-Each bot picks its AI provider on the deploy page. Every provider has a cheap and a strong model, so routing works the same everywhere. Providers without a key are shown as "not set up".
+Each bot picks its AI provider on the deploy page. Every provider has a cheap and a strong model, so routing works the same way everywhere. Providers without a key show up as "not set up".
 
 | Provider | Easy questions | Hard questions | Price per million tokens (input / output) | Turn it on |
 |---|---|---|---|---|
@@ -51,15 +51,15 @@ Each bot picks its AI provider on the deploy page. Every provider has a cheap an
 | Gemini (Google) | Gemini 3.1 Flash-Lite | Gemini 3.5 Flash | $0.25 / $1.50 and $1.50 / $9 (both have a free tier) | `GEMINI_API_KEY` from Google AI Studio |
 | Ollama (open source, your own machine) | qwen3.5:0.8b | qwen3.5:4b | free per answer | `OLLAMA_URL`, e.g. `http://host.docker.internal:11434` |
 
-Prices are list prices from November 2026; check each provider's page. Model names can be changed with `CHEAP_MODEL` / `STRONG_MODEL` (Claude), `GEMINI_CHEAP_MODEL` / `GEMINI_STRONG_MODEL`, `OLLAMA_CHEAP_MODEL` / `OLLAMA_STRONG_MODEL`. Every provider gets the same retry and strong-to-cheap fallback, and costs are tracked at that provider's prices.
+Prices are list prices from November 2026; check each provider's page. You can change model names with `CHEAP_MODEL` / `STRONG_MODEL` (Claude), `GEMINI_CHEAP_MODEL` / `GEMINI_STRONG_MODEL`, and `OLLAMA_CHEAP_MODEL` / `OLLAMA_STRONG_MODEL`. Every provider gets the same retry and strong-to-cheap fallback, and costs are tracked at that provider's prices.
 
-## Evaluation: measured quality, not guesses
+## Evaluation
 
-`questions.yaml` holds 73 questions about the two sample companies: 66 with the facts a correct answer must contain, and 7 whose answer is *not* in the documents (the bot must say so). Six of them use different words than the documents ("Where do students sleep?" for housing) to test meaning search. `evaluate.py` grades:
+`questions.yaml` holds 73 questions about the two sample companies: 66 with the facts a correct answer must contain, and 7 whose answer is not in the documents (the bot has to say so). Six of them use different words from the documents ("Where do students sleep?" for housing) to test meaning search. `evaluate.py` grades three things:
 
-- **search**: does each search method find the right section, and find nothing for off-topic questions?
-- **routing**: does the router send hard questions to the strong model?
-- **answers**: ask a running SkyMind every question with each provider and routing setting; report accuracy, correct refusals, speed and cost, then name the cheapest setup that passes the quality bar.
+- search: does each search method find the right section, and find nothing for off-topic questions?
+- routing: does the router send hard questions to the strong model?
+- answers: ask a running SkyMind every question with each provider and routing setting, then report accuracy, correct refusals, speed and cost, and name the cheapest setup that passes the quality bar.
 
 ```bash
 docker compose up --build                                   # one window
@@ -75,10 +75,10 @@ Search, 66 questions with a section to find and 7 that should find nothing:
 | Method | Right section first | Right section in top 3 | Finds nothing when it should |
 |---|---|---|---|
 | keyword (IDF overlap) | 91% | 94% | 29% |
-| **bm25** (default) | 89% | 91% | 57% |
+| bm25 (default) | 89% | 91% | 57% |
 | hybrid (bm25 + embeddings) | _run with GEMINI_API_KEY_ | | |
 
-BM25 refuses off-topic questions about twice as often as keyword search. Its misses are questions that use different words than the documents ("sleep" vs "residence hall", "money back" vs "refund"), which is what hybrid search is for. Off-topic questions that share a word with the documents ("weather in *Denton*", "football *coach*" vs "career *coach*") still find a section; the model then says it doesn't have the answer, and the question shows up in the bot's "Questions I couldn't answer" list.
+BM25 refuses off-topic questions about twice as often as keyword search. Where it misses, it is usually a question worded differently from the documents ("sleep" vs "residence hall", "money back" vs "refund"), which is what hybrid search is for. Off-topic questions that happen to share a word with the documents ("weather in Denton", "football coach" vs "career coach") still match a section; the model then says it doesn't have the answer, and the question lands in the bot's "Questions I couldn't answer" list.
 
 To measure hybrid and tune its similarity threshold:
 
@@ -88,26 +88,19 @@ docker compose run --rm -e GEMINI_API_KEY evaluate search --tune
 ```
 Pick the `EMBED_MIN_SIM` with the best balance of found sections and refusals, and set it in `knowledge.py`.
 
-### Routing: how the router is checked honestly
+### Checking the router
 
-The router (`router.py`) decides cheap model or strong model. It adds up five explainable signals: the message
-asks for reasoning ("explain", "compare"), asks for several things at once, describes the person's own situation,
-gives specific numbers or times to work with, or needs counting or arithmetic. Two points or more go to the strong
-model, and every answer shows the reasons (`route_reason`).
+The router (`router.py`) decides cheap model or strong model. It adds up five signals you can read off the message: it asks for reasoning ("explain", "compare"), asks for several things at once, describes the person's own situation, gives specific numbers or times to work with, or needs counting or arithmetic. Two points or more send it to the strong model, and every answer shows the reasons (`route_reason`).
 
-The first router only looked for reasoning words. It agreed with the easy/hard labels on 97% of the original
-questions, but those were the questions it was written against. On new questions it fell apart, so the router was
-rebuilt and checked on questions it had not been written against:
+The first version of the router only looked for reasoning words. It agreed with the easy/hard labels on 97% of the original questions, but those were the questions it had been written against. On new questions it fell apart, so we rebuilt it and checked it on questions it had not seen:
 
 | Question set | Questions | First router | Current router |
 |---|---|---|---|
 | `questions.yaml` (used while writing both routers) | 65 | 97% | 100% |
 | `questions_heldout.yaml` (used while writing the current router) | 29 | 45% | 97% |
-| `questions_third.yaml` (**not** used to write either router) | 28 | 61% | **89%** |
+| `questions_third.yaml` (not used to write either router) | 28 | 61% | 89% |
 
-The honest number is the last row: 89% on questions the router was never tuned to. (That run exposed one bug,
-"how many ... *from* the Dallas area" being read as arithmetic; with the bug fixed the third set scores 93%, but it
-is no longer an untouched test for that fix.) To check a future change fairly, write new questions first.
+The number that counts is the last row: 89% on questions the router was never tuned to. (That run turned up one bug, where "how many ... from the Dallas area" was read as arithmetic. With the bug fixed the third set scores 93%, but it is no longer an untouched test for that fix.) To check a future change fairly, write new questions first.
 
 ```bash
 python evaluate.py routing --questions questions_third.yaml      # free, instant
@@ -132,18 +125,15 @@ Measured against the live service, document answers only (website lookup off), w
 | 20 | strong: claude-sonnet-5-5 | 100% | 100% | 2.0 s | 3.13 | 100% |
 | 20 | auto (current router) | 100% | 100% | 1.6 s | 1.11 | 25% |
 
-What this shows:
+A few things stand out:
 
-- **The cheap model is as accurate as the strong one on document questions, within noise.** The same cheap setup scored 94% and 97% on the same 73 questions on two days, so run-to-run variation (about two questions) is as large as the gap between the models. The strong model costs about 24 times more.
-- **Guessing difficulty in advance did not pay.** Judged by results, only 1 of 73 questions needed the strong model, the router did not send that one there, and it sent 9 others for no gain. On the blind set auto cost 8 times more than cheap for the same 100%. On the blind set the router agreed with the human labels on 72% (first router: 44%), but the cheap model answered every "hard" question correctly, so the labels overstated the need.
-- **Every wrong answer in run 2 was a search miss, not a model mistake.** The model was not shown the right section ("Where do students sleep?", "How can I talk to a person?") and honestly said it had no answer. A wider search finds the section in each case, which is what the second look does. Its effect on these sets still has to be measured with a new run.
+- On document questions the cheap model is about as accurate as the strong one, inside the noise. The same cheap setup scored 94% and 97% on the same 73 questions on two different days, so day-to-day variation (around two questions) is as big as the gap between the models. The strong model costs roughly 24 times more.
+- Guessing difficulty up front did not pay off. Judged by results, only 1 of 73 questions actually needed the strong model, the router did not send that one there, and it sent 9 others for no gain. On the blind set, auto cost 8 times more than cheap for the same 100%. The router agreed with the human labels on 72% of the blind set (first router: 44%), but the cheap model answered every "hard" question correctly, so the labels overstated the need.
+- Every wrong answer in run 2 was a search miss, not a model mistake. The model wasn't shown the right section ("Where do students sleep?", "How can I talk to a person?") and honestly said it had no answer. A wider search finds the section each time, which is what the second look does. Its effect on these sets still needs a fresh run to measure.
 
-So the recommended setting for document question-answering is the cheap model, with the second look; the strong model is kept for the code reviewer. The router stays in as a measured experiment (`model: auto`).
+So for document question-answering the recommended setting is the cheap model with the second look. The strong model is kept for the code reviewer, and the router stays in as a measured experiment (`model: auto`).
 
-Labels are one person's opinion of what is hard, so `evaluate.py` also judges routing by results. Run all three
-routing settings together and it reports which questions only the strong model got right, whether the router sent
-those to the strong model, and how many questions it sent there without need. `--save results.json` keeps every
-question's answer, model and grade for inspection.
+Since "hard" is one person's opinion, `evaluate.py` can also judge routing by results. Run all three routing settings together and it reports which questions only the strong model got right, whether the router sent those to the strong model, and how many it sent there for nothing. `--save results.json` keeps every question's answer, model and grade so you can read them.
 
 ```bash
 python evaluate.py answers --url https://your-service --providers anthropic --routing cheap,strong,auto --pace 4 --save results.json
@@ -156,58 +146,58 @@ Answers, mock provider (no AI, extractive baseline):
 | mock / keyword search | 93% | 38% | 85% |
 | mock / bm25 search | 91% | 88% | 91% |
 
-## Website lookup: documents first, then the company's own site
+## Website lookup
 
-Each question-answering bot has a knowledge source, chosen on `/deploy` (and changeable under **Improve**):
+Each question-answering bot has a knowledge source, chosen on `/deploy` and changeable under Improve:
 
-- **Documents only (strict):** if the documents don't have it, the bot says so.
-- **Documents, then our website:** if the documents don't answer (including partial answers like "However, I don't have the details..."), SkyMind looks it up on the company's own site, e.g. `unt.edu` and its subdomains, **never the rest of the internet**. The answer starts "That isn't in UNT's documents, so I checked unt.edu:", shows a *From the company website* chip and links its source pages.
+- Documents only (strict): if the documents don't have it, the bot says so.
+- Documents, then our website: if the documents don't answer (including partial answers like "However, I don't have the details..."), SkyMind looks the question up on the company's own site, for example `unt.edu` and its subdomains, and nowhere else on the internet. The answer starts "That isn't in UNT's documents, so I checked unt.edu:", shows a "From the company website" chip, and links its source pages.
 
-How (`web.py`):
-1. **Claude bots** use Claude's web search tool with `allowed_domains` set to the company's domain, and its citations become the source links. Each search costs $0.01 ($10 per 1,000), counted in the bot's spend. At most 3 searches per question.
-2. **Other providers, or if web search is off for your Anthropic organisation:** SkyMind's own reader (the Suggest fix crawler) reads the site, follows related same-site links (SSRF-safe) and answers from the best passages.
+How it works (`web.py`):
+1. Claude bots use Claude's web search tool with `allowed_domains` set to the company's domain, and its citations become the source links. Each search costs $0.01 ($10 per 1,000) and is counted in the bot's spend. At most 3 searches per question.
+2. Other providers, or an Anthropic organisation that has web search turned off, fall back to SkyMind's own reader (the Suggest fix crawler), which reads the site, follows related same-site links (SSRF-safe) and answers from the best passages.
 
-Guards: answers are cached for a day per question; `WEB_LOOKUPS_PER_HOUR` (default 30) per bot caps the bill; when streaming, the first 300 characters are held back so a "not in my documents" answer is never shown before the lookup. Every website answer is still logged under **Questions it couldn't answer**, marked *answered from your website*, so the company can add it to its documents (or click Suggest fix) and skip the lookup next time.
+A few guards keep this cheap and honest: answers are cached for a day per question, `WEB_LOOKUPS_PER_HOUR` (default 30) per bot caps the bill, and while streaming the first 300 characters are held back so a "not in my documents" answer is never shown before the lookup runs. Every website answer is still logged under "Questions it couldn't answer", marked "answered from your website", so the company can add it to its documents (or click Suggest fix) and skip the lookup next time.
 
-The UNT Helper sample has it on for `https://www.unt.edu`.
+The UNT Helper sample has this turned on for `https://www.unt.edu`.
 
 ## Streaming answers
 
-Answers appear word by word, like ChatGPT. `POST /bots/{id}/chat/stream` sends Server-Sent Events: `start` (model tier, sources), many `text` pieces as the model writes, then `done` with the same fields as `/chat` plus `first_token_ms` (time to first word, shown as a chip). Claude, Gemini and Ollama each stream in their own format; `providers.stream()` parses all three behind one async generator.
+Answers appear word by word, like ChatGPT. `POST /bots/{id}/chat/stream` sends Server-Sent Events: a `start` event (model tier, sources), many `text` pieces as the model writes, then a `done` event with the same fields as `/chat` plus `first_token_ms` (time to the first word, shown as a chip). Claude, Gemini and Ollama each stream in their own format, and `providers.stream()` parses all three behind one async generator.
 
-- All checks (access, rate limits, budget, message length) run **before** the first byte, so those stay normal HTTP errors.
-- If the stream fails before any text, SkyMind uses the normal call (retry + strong-to-cheap fallback) and sends that answer in one piece. If it fails halfway, the user keeps the words already shown plus a short note.
+- Access, rate limits, budget and message length are all checked before the first byte, so those stay normal HTTP errors.
+- If the stream fails before any text, SkyMind uses the normal call (retry plus strong-to-cheap fallback) and sends the answer in one piece. If it fails halfway, the user keeps the words already shown plus a short note.
 - Memory, cost, the unanswered-question log and ratings work exactly as with `/chat` (both share `prepare_chat()` and `finish_chat()`).
 - `Cache-Control: no-cache` and `X-Accel-Buffering: no` stop proxies from holding the pieces back. The chat page falls back to `/chat` if the browser can't stream.
 
-## Bot jobs: more than answering questions
+## Bot jobs
 
-When deploying, a company picks what its bot is **for**. The documents are then its knowledge or its rules for that job:
+When deploying, a company picks what its bot is for. The documents are then its knowledge, or its rules, for that job:
 
 | Job | What users do | What the documents are | Model |
 |---|---|---|---|
-| **Answer questions** | Ask about policies, products, services | FAQs, policies, product info | Routed: cheap for easy, strong for hard |
-| **Code reviewer** | Paste code (up to 12,000 characters) | The company's engineering rules | Always strong |
-| **Idea partner** | Describe a goal or problem | Products, customers, goals, limits | Always strong |
+| Answer questions | Ask about policies, products, services | FAQs, policies, product info | Routed: cheap for easy, strong for hard |
+| Code reviewer | Paste code (up to 12,000 characters) | The company's engineering rules | Always strong |
+| Idea partner | Describe a goal or problem | Products, customers, goals, limits | Always strong |
 
-The code reviewer gives a summary (ready to merge or not), issues ranked High / Medium / Low with the fix, and **cites the company's own rule** for each one, e.g. `[Security rules]`. A plain chatbot can review code; a SkyMind reviewer reviews it against *your* standards. It never repeats a secret it finds, and flags comments that try to instruct the reviewer (prompt injection) instead of obeying them. Reviews and ideas see every document section when they fit (15,000 characters), otherwise the 6 best matches. Without an AI key, a rule-based checker (secrets, SQL injection, bare except, missing timeouts, money as float, print, TODO, eval) still reviews and cites the rules, so the demo works offline.
+The code reviewer gives a summary (ready to merge or not), issues ranked High / Medium / Low with the fix, and cites the company's own rule for each one, for example `[Security rules]`. A plain chatbot can review code; a SkyMind reviewer reviews it against your standards. It never repeats a secret it finds, and it flags comments that try to instruct the reviewer (prompt injection) rather than obeying them. Reviews and ideas see every document section when they fit (15,000 characters), otherwise the 6 best matches. Without an AI key, a rule-based checker (secrets, SQL injection, bare except, missing timeouts, money as float, print, TODO, eval) still reviews and cites the rules, so the demo works offline.
 
-**Ready-made standards.** A company doesn't have to write rules from scratch: on `/deploy`, a code reviewer can start from **OWASP Top 10:2025** (security), **PEP 8** (Python style) or **clean code basics** in one click (`GET /standards`, written in `standards.py` as short review rules that summarise the public standards). The company adds its own rules on top. The reviewer cites both, e.g. `[Security rules] [OWASP A05: Injection]`, and the company's rules win when they disagree.
+Ready-made standards: a company doesn't have to write rules from scratch. On `/deploy`, a code reviewer can start from OWASP Top 10:2025 (security), PEP 8 (Python style) or clean code basics in one click (`GET /standards`, written in `standards.py` as short review rules that summarise the public standards). The company adds its own rules on top. The reviewer cites both, for example `[Security rules] [OWASP A05: Injection]`, and the company's rules win when they disagree.
 
-Samples: `/chat/acme-code-reviewer` The sample reviewer has Acme's rules plus OWASP Top 10. (with a "Try sample code with bugs" button) and `/chat/acme-idea-partner`.
+Samples: `/chat/acme-code-reviewer` (with a "Try sample code with bugs" button; it has Acme's rules plus OWASP Top 10) and `/chat/acme-idea-partner`.
 
-## Improve your bot (the improvement loop)
+## Improving a bot
 
-A bot is only as useful as its documents. SkyMind shows each company what is missing so they can fix it in minutes, without retraining any model:
+A bot is only as good as its documents, so SkyMind shows each company what is missing and lets them fix it in minutes, without retraining any model.
 
-1. **Questions I couldn't answer.** When the bot says it doesn't have the information, the question is logged (repeats are counted). Owners see the list under **Your bots → Improve** on `/deploy`.
-2. **Thumbs up and down.** Every answer on the chat page has *Was this helpful? Yes / No*. Not-helpful answers are kept with the question so the owner can see what went wrong. The admin console shows each bot's helpful percentage.
-3. **Let SkyMind fix it.** In **Improve**, enter the company website and click **Suggest fix**. SkyMind reads the page, follows the links that match the unanswered questions (same site only, up to 6 pages), finds the passages that answer each one, and drafts new sections ending in `Source: <page>`. With an AI model the strong model rewrites the passages, using only their facts, and lists what the site doesn't answer. Without one, the passages themselves are used. The owner edits the draft and clicks **Add to documents**, and the answered questions are marked fixed. Nothing is added without approval.
-4. **Or add it yourself.** Type the answer (**Answer it**), upload files, or import a web page. The bot uses it on the next question.
-5. **More ways to add documents:** PDF, Word (.docx), text, Markdown and CSV files (up to 5 MB each), and public web pages or online PDFs by link.
-6. **Embedding search (hybrid).** Choose *Meaning + keywords* when deploying (needs GEMINI_API_KEY, free tier). Documents are embedded once with `gemini-embedding-001`; each question is matched by meaning and by words, and the two rankings are combined (reciprocal rank fusion). If embeddings fail, the bot falls back to BM25 and keeps working.
+1. Questions I couldn't answer. When the bot says it doesn't have the information, the question is logged and repeats are counted. Owners see the list under Your bots → Improve on `/deploy`.
+2. Thumbs up and down. Every answer on the chat page has "Was this helpful? Yes / No". Not-helpful answers are kept with the question so the owner can see what went wrong, and the admin console shows each bot's helpful percentage.
+3. Let SkyMind fix it. In Improve, enter the company website and click Suggest fix. SkyMind reads the page, follows the links that match the unanswered questions (same site only, up to 6 pages), finds the passages that answer each one, and drafts new sections that end in `Source: <page>`. With an AI model the strong model rewrites the passages using only their facts and lists what the site doesn't answer; without one, the passages themselves are used. The owner edits the draft, clicks Add to documents, and the answered questions are marked fixed. Nothing is added without approval.
+4. Or add it yourself. Type the answer (Answer it), upload files, or import a web page. The bot uses it on the next question.
+5. More ways to add documents: PDF, Word (.docx), text, Markdown and CSV files (up to 5 MB each), and public web pages or online PDFs by link.
+6. Embedding search (hybrid). Choose "Meaning + keywords" when deploying (needs GEMINI_API_KEY, free tier). Documents are embedded once with `gemini-embedding-001`, each question is matched by meaning and by words, and the two rankings are combined with reciprocal rank fusion. If embeddings fail, the bot falls back to BM25 and keeps working.
 
-Demo: deploy a bot with only the *About UNT* paragraph, ask "Do I need a meal plan?" (it can't answer), open **Improve**, click **Suggest fix** with `https://dining.unt.edu` (or upload `unt_student_services.md`), approve, and ask again.
+Demo: deploy a bot with only the "About UNT" paragraph, ask "Do I need a meal plan?" (it can't answer), open Improve, click Suggest fix with `https://dining.unt.edu` (or upload `unt_student_services.md`), approve, and ask again.
 
 Web import safety: SkyMind only fetches `http(s)` pages on ports 80/443 whose addresses are all public, re-checks every redirect, and refuses localhost, private networks and cloud metadata addresses (SSRF protection). Imports are limited to 30 per hour per account.
 
@@ -218,57 +208,70 @@ pip install -r requirements-dev.txt
 python tests/run_all.py
 ```
 
-Twelve suites with no network or paid calls: the orchestrator (the trace of every answer, the second look, honest refusals), the model router (each signal, how they add up, forced modes), website lookup (strict mode, cache, Claude search with allowed_domains and the fee, fallback when search is off, refusal held back while streaming), streaming (Claude, Gemini and Ollama stream parsers, event order, fallbacks), bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits), Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions), the improvement loop (gaps, ratings, adding information), document import (PDF, Word, web pages, blocked private addresses) and embeddings (hybrid search, fallback), plus the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits), sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are rejected; CSRF; ownership; per-bot access; sign-out), and model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost).
+Twelve suites, none of which touch the network or make paid calls:
+
+- the orchestrator (the trace of every answer, the second look, honest refusals)
+- the model router (each signal, how they add up, forced modes)
+- website lookup (strict mode, cache, Claude search with allowed_domains and the fee, fallback when search is off, refusal held back while streaming)
+- streaming (Claude, Gemini and Ollama stream parsers, event order, fallbacks)
+- bot jobs (code reviewer cites rules, never echoes secrets, strong model, size limits)
+- Suggest fix (follows only related same-site links, refuses private addresses, drafts with sources, approval clears the questions)
+- the improvement loop (gaps, ratings, adding information)
+- document import (PDF, Word, web pages, blocked private addresses)
+- embeddings (hybrid search, fallback)
+- the platform (deploy, chat, memory, isolation, budget guard, validation, admin, privacy, security headers, rate limits)
+- sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are all rejected; CSRF; ownership; per-bot access; sign-out)
+- model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost)
 
 ## What happens when a question arrives
 
-1. **Retrieve:** find the sections of that company's documents that best match the question (BM25 by default).
-2. **Route:** easy questions go to the cheap model. A question goes to the strong model when it is long, contains code, or shows enough signs of difficulty: it asks for reasoning, asks several things at once, or describes a situation with numbers to work through. The answer says why (`route_reason`).
-3. **Budget guard:** once a bot has used its monthly LLM budget, the strong model is paused and everything goes to the cheap model.
-4. **Answer** from the retrieved sections only. If the answer is not in the documents, the bot says so.
-   - **Second look:** word search can miss a section that uses other words ("Where do students sleep?" vs "residence halls"). When the model says it has no answer, SkyMind gives it the six best sections with no minimum score and asks once more. A real answer replaces the refusal; otherwise the refusal stands and the question is logged. Turn it off with `SECOND_LOOK=false`.
-5. **Remember** the recent messages of that conversation (memory is separate for each bot).
-6. **Record** latency, tokens, cost, and what it would have cost with the strong model for everything.
-7. **Show its work:** every answer carries a `trace` (checks, route, search, model, second look, website, save) with the time each step took. The chat page shows it under "How this answer was made".
+1. Retrieve: find the sections of that company's documents that best match the question (BM25 by default).
+2. Route: easy questions go to the cheap model. A question goes to the strong model when it is long, contains code, or shows enough signs of difficulty, meaning it asks for reasoning, asks several things at once, or describes a situation with numbers to work through. The answer says why (`route_reason`).
+3. Budget guard: once a bot has used its monthly LLM budget, the strong model is paused and everything goes to the cheap model.
+4. Answer from the retrieved sections only. If the answer isn't in the documents, the bot says so.
+   - Second look: word search can miss a section that uses other words ("Where do students sleep?" vs "residence halls"). When the model says it has no answer, SkyMind gives it the six best sections with no minimum score and asks once more. A real answer replaces the refusal; otherwise the refusal stands and the question is logged. Turn it off with `SECOND_LOOK=false`.
+5. Remember the recent messages of that conversation (memory is separate for each bot).
+6. Record latency, tokens, cost, and what the request would have cost on the strong model.
+7. Show its work: every answer carries a `trace` (checks, route, search, model, second look, website, save) with the time each step took. The chat page shows it under "How this answer was made".
 
-## Put it on the internet (free, on Render)
+## Deploying on Render
 
 `render.yaml` describes the whole setup, so Render builds it for you: the SkyMind website plus a private Redis.
 
-1. Put these files in your GitHub repo (including `render.yaml`). Never upload an API key.
-2. Go to https://render.com, sign up with GitHub.
-3. Click **New**, then **Blueprint**. Pick your `skymind` repo and click **Apply**.
+1. Put these files in your GitHub repo, including `render.yaml`. Never upload an API key.
+2. Go to https://render.com and sign up with GitHub.
+3. Click New, then Blueprint. Pick your `skymind` repo and click Apply.
 4. Wait for the build (about 3 to 5 minutes). Your site is at `https://skymind-XXXX.onrender.com`.
-5. Admin token: in Render, open the **skymind** service, then **Environment**, and copy `ADMIN_TOKEN`.
+5. For the admin token, open the skymind service in Render, go to Environment, and copy `ADMIN_TOKEN`.
 
-What the hosted version does differently:
-- Starts with the sample bots at stable links: `/chat/unt-helper` and `/chat/acme-support`.
-- Per-visitor limits: 30 messages per minute, 10 deploys per hour, 20 bots at most.
-- Mock model (no API key, no cost). For real answers add `ANTHROPIC_API_KEY` in the Environment tab and set `LLM_PROVIDER=anthropic`.
+The hosted version differs in a few ways:
+- It starts with the sample bots at stable links: `/chat/unt-helper` and `/chat/acme-support`.
+- Per-visitor limits apply: 30 messages per minute, 10 deploys per hour, 20 bots at most.
+- It runs the mock model (no API key, no cost). For real answers, add `ANTHROPIC_API_KEY` in the Environment tab and set `LLM_PROVIDER=anthropic`.
 
-Free-plan limits: the site sleeps after 15 minutes with no visitors and takes about a minute to wake, and free Redis is wiped on restart (the sample bots come back automatically). Before a demo, open the site a few minutes early and keep the admin page open (it refreshes every 2 seconds, so the site stays awake).
+On the free plan the site sleeps after 15 minutes with no visitors and takes about a minute to wake, and free Redis is wiped on restart (the sample bots come back automatically). Before a demo, open the site a few minutes early and keep the admin page open, since it refreshes every 2 seconds and that keeps the site awake.
 
 ## Sign in with Google and bot access
 
 When `GOOGLE_CLIENT_ID` is set:
-- **Companies sign in with Google to deploy.** Their bots belong to their Google account, so they can manage them from any device under **Your bots** on `/deploy`.
-- **Each company chooses who can use each bot** (when deploying, or later with **Access**):
-  - *Anyone with the link* (public)
-  - *Only people who sign in with Google*, optionally limited to email domains (`unt.edu`) and/or invited addresses
-- **Admins** can sign in with a Google account listed in `ADMIN_EMAILS` instead of typing the admin token.
+- Companies sign in with Google to deploy. Their bots belong to their Google account, so they can manage them from any device under Your bots on `/deploy`.
+- Each company chooses who can use each bot, when deploying or later under Access:
+  - Anyone with the link (public)
+  - Only people who sign in with Google, optionally limited to email domains (`unt.edu`) and/or invited addresses
+- Admins can sign in with a Google account listed in `ADMIN_EMAILS` instead of typing the admin token.
 
 Without `GOOGLE_CLIENT_ID` everything still works: bots are public and owned through a manage key kept in the browser.
 
 ### Get a Google client ID (about 10 minutes, free)
 
 1. Open https://console.cloud.google.com and create a project (e.g. "SkyMind").
-2. Go to **Google Auth Platform** (APIs & Services). Click **Get started**: app name *SkyMind*, your support email, audience **External**, your contact email.
-3. **Clients**, then **Create client**: type **Web application**. Under **Authorized JavaScript origins** add your site and local address, scheme and host only:
+2. Go to Google Auth Platform (APIs & Services). Click Get started: app name SkyMind, your support email, audience External, your contact email.
+3. Go to Clients, then Create client, type Web application. Under Authorized JavaScript origins add your site and local address, scheme and host only:
    - `https://skymind-XXXX.onrender.com`
    - `http://localhost` and `http://localhost:8000`
-   No redirect URIs are needed. Click **Create** and copy the **Client ID** (ends in `.apps.googleusercontent.com`). There is no secret to keep.
-4. **Audience**: while the app is in *Testing*, only the test users you add can sign in. Click **Publish app** to let anyone sign in (SkyMind only asks for name and email, the basic scopes).
-5. In Render, open the **skymind** service, then **Environment**, and add:
+   No redirect URIs are needed. Click Create and copy the Client ID (it ends in `.apps.googleusercontent.com`). There is no secret to keep.
+4. Audience: while the app is in Testing, only the test users you add can sign in. Click Publish app to let anyone sign in (SkyMind only asks for name and email, the basic scopes).
+5. In Render, open the skymind service, go to Environment, and add:
    - `GOOGLE_CLIENT_ID` = the client ID
    - `ADMIN_EMAILS` = your Gmail address (comma-separate several)
    Save. Render redeploys in a few minutes.
@@ -276,15 +279,15 @@ Without `GOOGLE_CLIENT_ID` everything still works: bots are public and owned thr
 Locally: `set GOOGLE_CLIENT_ID=...` and `set ADMIN_EMAILS=you@gmail.com` before `docker compose up --build`.
 
 ### How it is kept safe
-- Google's ID token is checked on the server: Google's signature (RS256 only), audience = your client ID, issuer = Google, not expired, email verified.
+- Google's ID token is checked on the server: Google's signature (RS256 only), audience equal to your client ID, issuer equal to Google, not expired, email verified.
 - SkyMind then uses its own session: a random token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` on HTTPS). Only a SHA-256 hash is stored in Redis, and signing out deletes it.
-- Every change made with the sign-in cookie must carry an `X-Requested-With: SkyMind` header, which other websites cannot add, so cross-site request forgery is blocked.
-- Domain rules check Google Workspace's organisation claim (`hd`) when present, otherwise the verified email address. Google only fully vouches for Gmail and Workspace addresses. For other providers it confirms the address was verified when the account was made, so use invited addresses for anything sensitive.
+- Every change made with the sign-in cookie has to carry an `X-Requested-With: SkyMind` header, which other websites can't add, so cross-site request forgery is blocked.
+- Domain rules check Google Workspace's organisation claim (`hd`) when it's present, otherwise the verified email address. Google only fully vouches for Gmail and Workspace addresses; for other providers it confirms the address was verified when the account was made, so use invited addresses for anything sensitive.
 - The chat page shows which domains are allowed, never the invite list.
 
 ## Load testing
 
-Simulates many users chatting at once and prints latency, throughput and errors. It runs inside Docker, so you do not need Python on your computer. It refuses to run against a real (paid) model unless you add `--allow-real`.
+The load tester simulates many users chatting at once and prints latency, throughput and errors. It runs inside Docker, so you don't need Python on your computer. It refuses to run against a real (paid) model unless you add `--allow-real`.
 
 ```bash
 docker compose up --build                          # in one window, leave running
@@ -309,7 +312,7 @@ The server and the load tester share one machine, so treat the numbers as a lowe
 
 ## Capacity planner
 
-`/plan` (and `python planner.py spec.yaml`) turns a spec into replicas, a latency check and a monthly cost estimate. The deploy page runs it for every new bot. All token prices, traffic patterns and replica capacity are **placeholder assumptions** at the top of `planner.py`. Replace them with your load-test measurements and your provider's real prices before quoting results.
+`/plan` (and `python planner.py spec.yaml`) turns a spec into replicas, a latency check and a monthly cost estimate. The deploy page runs it for every new bot. All token prices, traffic patterns and replica capacity are placeholder assumptions at the top of `planner.py`. Replace them with your load-test measurements and your provider's real prices before quoting results.
 
 ## API
 
@@ -394,20 +397,20 @@ Quality and testing: `evaluate.py` with `questions.yaml`, `questions_heldout.yam
 
 Other: `unt_student_services.md` (sample document to upload), `Dockerfile`, `docker-compose.yml`, `render.yaml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
-## Honest limits
+## Limitations
 
-- "Deploy" currently creates an isolated bot (own documents, memory, routing, budget and stats) inside one running service. Giving each customer a separate Kubernetes deployment with autoscaling is the next step.
-- Memory types `summary` and `long_term` are planned. Today every bot keeps the recent messages of each conversation.
-- The router is rule based. It scored 89% on questions it was never tuned to, and "hard" is a human label: on document questions the cheap model was nearly as accurate as the strong one, so how much the router adds over always using the cheap model is still being measured (`evaluate.py answers` reports it). A small classifier model, or escalating only when the cheap answer is weak, are the next steps.
-- BM25 and keyword search can miss questions that use different words than the documents. Hybrid search fixes this but needs a Gemini key, and its threshold is only tuned once you run `evaluate search --tune`.
-- Vectors are stored in Redis next to the bot; for very large document sets a vector database (pgvector) would be the next step.
-- Pages that need JavaScript to show text, and scanned PDFs (images), import as almost no text. Suggest fix reads links in the page's HTML; menus built by JavaScript are not followed, so give it a more specific page (e.g. the FAQ).
+- "Deploy" currently creates an isolated bot (its own documents, memory, routing, budget and stats) inside one running service. A separate Kubernetes deployment per customer, with autoscaling, is the next step.
+- Memory types `summary` and `long_term` are planned. For now every bot keeps the recent messages of each conversation.
+- The router is rule based. It scored 89% on questions it was never tuned to, and "hard" is a human label. On document questions the cheap model was nearly as accurate as the strong one, so how much the router adds over just using the cheap model is still being measured (`evaluate.py answers` reports it). A small classifier model, or escalating only when the cheap answer looks weak, are the next steps.
+- BM25 and keyword search can miss questions worded differently from the documents. Hybrid search fixes this but needs a Gemini key, and its threshold is only tuned once you run `evaluate search --tune`.
+- Vectors are stored in Redis next to the bot. For very large document sets a vector database (pgvector) would be the next step.
+- Pages that need JavaScript to show text, and scanned PDFs (images), import as almost no text. Suggest fix reads links in the page's HTML; menus built by JavaScript aren't followed, so give it a more specific page (for example the FAQ).
 - The offline code checker only knows a handful of patterns; real reviews need an AI model.
-- Answers are graded by required facts, which is strict and explainable but can mark a correct paraphrase as wrong (e.g. "fourteen" vs "14"). Check misses with `--show`.
-- Accounts are individual Google sign-ins. Teams (several people managing one company's bots) are not built yet.
+- Answers are graded by required facts, which is strict and explainable but can mark a correct paraphrase as wrong ("fourteen" vs "14"). Check misses with `--show`.
+- Accounts are individual Google sign-ins. Teams (several people managing one company's bots) aren't built yet.
 - The deploy page is open to anyone who can reach the server, limited by MAX_BOTS. Keep BIND_ADDRESS at 127.0.0.1 unless you need others to connect.
 - Costs are estimates from placeholder prices until calibrated.
-- The UNT Helper sample uses facts collected from official UNT pages in November 2026. Verify details on unt.edu.
+- The UNT Helper sample uses facts collected from official UNT pages in November 2026. Check details on unt.edu.
 
 ## Security
 
@@ -418,12 +421,12 @@ Other: `unt_student_services.md` (sample document to upload), `Dockerfile`, `doc
 | Someone deletes bots or reads admin data | `/admin/overview`, `DELETE /admin/stats` and `DELETE /bots/{id}` need the `X-Admin-Token` header (constant-time check). The public start page uses `/stats`, which has totals only. |
 | Spam runs up a real API bill | Per-conversation rate limit, optional per-address limit, budget guard (strong model paused), then a hard stop at 120% of the model budget. |
 | Huge or malformed requests | 1 MB request limit, 200,000-character document limit, 4,000-character messages, session IDs restricted to letters, digits, `-` and `_`. |
-| Prompt injection ("ignore your rules...") | The system prompt treats documents and messages as data, never as instructions, and never reveals the prompt or keys. This reduces the risk but no prompt fully removes it. |
+| Prompt injection ("ignore your rules...") | The system prompt treats documents and messages as data, never as instructions, and never reveals the prompt or keys. This reduces the risk but no prompt removes it completely. |
 | Script injection in the pages | All text is inserted with `textContent`, plus a Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff` and `no-referrer`. |
 | Leaked secrets | The API key comes only from an environment variable, model errors are logged on the server and not sent to the browser, and `.gitignore` blocks `.env` files. |
 | Container break-out damage | The app runs as a non-root user with `no-new-privileges`. Dependencies are pinned to tested major versions. |
 
-Load testing reads the admin token automatically (from ADMIN_TOKEN or Redis). For a load test, raise or turn off the per-conversation limit if you lower the think time: `set CHAT_LIMIT_PER_SESSION=0`.
+The load tester reads the admin token automatically (from ADMIN_TOKEN or Redis). For a load test, raise or turn off the per-conversation limit if you lower the think time: `set CHAT_LIMIT_PER_SESSION=0`.
 
 ## Roadmap
 

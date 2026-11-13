@@ -5,7 +5,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 failed = []
-for name in ("test_platform.py", "test_auth.py", "test_llm.py", "test_improve.py", "test_ingest.py", "test_embed.py", "test_jobs.py", "test_fix.py", "test_stream.py", "test_web.py", "test_router.py"):
+for name in ("test_platform.py", "test_auth.py", "test_llm.py", "test_improve.py", "test_ingest.py", "test_embed.py", "test_jobs.py", "test_fix.py", "test_stream.py", "test_web.py", "test_router.py", "test_orchestrator.py"):
     print(f"=== {name}")
     if subprocess.run([sys.executable, os.path.join(HERE, name)]).returncode:
         failed.append(name)
