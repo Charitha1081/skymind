@@ -1543,6 +1543,18 @@ body { background: var(--bg); }
 .websrc span { color: var(--muted); }
 .websrc a { overflow-wrap: anywhere; }
 .chip.web { background: var(--good-soft); color: var(--good); border-color: transparent; }
+.trace { margin-top: 10px; font-size: 12.5px; white-space: normal; color: var(--muted); }
+.trace summary { cursor: pointer; width: fit-content; padding: 2px 0; font-weight: 550; }
+.trace summary:hover { color: var(--ink); }
+.trace ol { list-style: none; margin: 8px 0 2px; padding: 0; display: grid; gap: 7px; }
+.trace li { display: grid; grid-template-columns: 112px 1fr 58px; gap: 4px 10px; align-items: baseline; }
+.trace .st { font-weight: 650; color: var(--ink); }
+.trace .ms { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.trace .bar { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.trace .bar i { display: block; height: 100%; min-width: 2px; border-radius: 2px; background: var(--sky); }
+.trace li.model .bar i { background: var(--zenith); }
+.trace .sum { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); color: var(--ink); }
+@media (max-width: 520px) { .trace li { grid-template-columns: 1fr 58px; } .trace .dt { grid-column: 1 / -1; grid-row: 2; } }
 @media (prefers-reduced-motion: reduce) { .bubble.streaming::after { animation: none; } }
 .bubble pre { white-space: pre; overflow-x: auto; margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; line-height: 1.45; }
 .msg.user .bubble pre { background: rgba(0,0,0,.18); border-color: transparent; color: inherit; }
@@ -1712,6 +1724,36 @@ function renderRich(el, text) {
     }
   });
 }
+// "How this answer was made": every step SkyMind took, how long each took, and what the answer cost.
+function traceBox(data, ms) {
+  var box = document.createElement("details");
+  box.className = "trace";
+  var sum = document.createElement("summary");
+  sum.textContent = "How this answer was made (" + data.trace.length + " steps)";
+  box.append(sum);
+  var total = data.trace.reduce(function (t, s) { return t + (s.ms || 0); }, 0) || 1;
+  var list = document.createElement("ol");
+  data.trace.forEach(function (s) {
+    var li = document.createElement("li");
+    if (s.step === "Model" || s.step === "Second look") { li.className = "model"; }
+    var st = document.createElement("span"); st.className = "st"; st.textContent = s.step;
+    var dt = document.createElement("span"); dt.className = "dt"; dt.textContent = s.detail || "";
+    var tm = document.createElement("span"); tm.className = "ms"; tm.textContent = ms(s.ms || 0);
+    var bar = document.createElement("div"); bar.className = "bar";
+    var fill = document.createElement("i"); fill.style.width = Math.max(1, Math.round(100 * (s.ms || 0) / total)) + "%";
+    bar.append(fill);
+    li.append(st, dt, tm, bar);
+    list.append(li);
+  });
+  box.append(list);
+  var foot = document.createElement("div");
+  foot.className = "sum";
+  var cost = data.cost_usd || 0;
+  foot.textContent = "Total " + ms(data.latency_ms) + ", " + (data.input_tokens + data.output_tokens) + " tokens, cost $" +
+    cost.toFixed(6) + " (about $" + (cost * 1000).toFixed(2) + " per 1,000 answers like this)";
+  box.append(foot);
+  return box;
+}
 function addMessage(text, who, data) {
   var row = document.createElement("div");
   row.className = "msg " + who;
@@ -1735,6 +1777,7 @@ function addMessage(text, who, data) {
       meta.append(chip((data.job === "code_review" ? "Checked against " : "Used ") + data.context_sections + " document sections"));
     }
     if (data.budget_guard) { meta.append(chip("Budget guard on")); }
+    if (data.second_look && data.answered_from !== "website") { meta.append(chip("Found on a second look", "web")); }
     if (data.answered_from === "website") { meta.append(chip("From the company website", "web")); }
     b.append(meta);
     if (data.answered_from === "website" && data.web_sources && data.web_sources.length) {
@@ -1753,6 +1796,7 @@ function addMessage(text, who, data) {
       });
       b.append(srcs);
     }
+    if (data.trace && data.trace.length) { b.append(traceBox(data, ms)); }
     if (data.answer_id) { b.append(rateRow(data.answer_id)); }
   }
   row.append(b);
@@ -1922,7 +1966,7 @@ async function askStreaming(text, wait) {
             $("log").append(row);
           }
           got = "";
-          bubble.textContent = "That isn't in my documents. Checking " + ev.data.site + "...";
+          bubble.textContent = ev.data.note || ("That isn't in my documents. Checking " + ev.data.site + "...");
           $("log").scrollTop = $("log").scrollHeight;
         } else if (ev.event === "done") { done = ev.data; }
         else if (ev.event === "error") { failure = ev.data && ev.data.detail; }

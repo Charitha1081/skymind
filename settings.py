@@ -21,6 +21,7 @@ LLM_PROVIDER = providers.default_provider()
 SEARCH_METHOD = os.getenv("SEARCH_METHOD", "bm25").strip().lower()  # default search for new bots (keyword | bm25)
 MAX_ANSWER_TOKENS = int(os.getenv("MAX_ANSWER_TOKENS", "512"))  # caps cost and length of each answer
 LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "25"))
+SECOND_LOOK = os.getenv("SECOND_LOOK", "true").lower() in ("1", "true", "yes")  # no answer found: search wider, ask once more
 STREAM_MOCK_DELAY_S = float(os.getenv("STREAM_MOCK_DELAY_S", "0.02"))  # mock provider: pause between words
 
 # --- conversation memory ---

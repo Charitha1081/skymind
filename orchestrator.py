@@ -7,7 +7,9 @@
        |               and which document sections to give it (knowledge.py)
     2. call_llm        build the prompt, call the provider (providers.py); a failed call is retried
        |               once, then the strong model falls back to the cheap one
-    3. website_lookup  only if the documents had no answer and the company allows it: search the
+    2b. second_look    only if the model said "I don't have that": search the documents more widely
+       |               and ask once more (word search can miss a section that uses other words)
+    3. website_lookup  only if the documents still had no answer and the company allows it: search the
        |               company's own website (web.py)
     4. finish_chat     save the conversation, record tokens, cost and latency, log the question as a
        |               gap if it went unanswered (improve.py), and return an id the user can rate
@@ -63,9 +65,18 @@ class ChatResponse(BaseModel):
     web_sources: list[dict] = []       # [{url, title}] pages the website answer came from
     first_token_ms: float | None = None  # streaming: time until the first word appeared
     streamed: bool = False
+    second_look: bool = False  # the first search found no answer; a wider search of the documents did
+    trace: list[dict] = []     # what SkyMind did for this answer: [{step, ms, detail}]
 
 
 # ---------- Step 1: before the model (access, limits, budget, routing, retrieval) ----------
+
+def mark(ctx: dict, step: str, since: float, detail: str = "") -> float:
+    """Add one line to the answer's trace (what happened, how long it took). Returns the time now."""
+    now = time.perf_counter()
+    ctx["trace"].append({"step": step, "ms": round((now - since) * 1000, 1), "detail": detail})
+    return now
+
 
 async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
     """Everything that happens before the model is called (shared by /chat and /chat/stream).
@@ -103,6 +114,8 @@ async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
         raise HTTPException(422, f"Messages to this assistant can be at most {job_cfg['max_message']:,} characters.")
 
     history = await load_history(bot_id, req.session_id) if remembers else []
+    ctx = {"trace": []}
+    t = mark(ctx, "Checks", start, "access, rate limits, budget" + (f", {len(history)} remembered messages" if history else ""))
 
     # Model routing, with a budget guard: once the bot has used its monthly LLM budget,
     # the strong model is paused and everything goes to the cheap model.
@@ -115,6 +128,7 @@ async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
         tier = "cheap"
         reason += "; strong model paused because the monthly LLM budget is used up"
 
+    t = mark(ctx, "Route", t, f"{tier} model: {reason}")
     query_vec = None
     if bot.get("search") == "hybrid" and bot.get("_vectors"):
         try:
@@ -130,7 +144,9 @@ async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
                                      method=bot.get("search", "keyword"), query_vec=query_vec, vectors=bot.get("_vectors"))
         if wide and not sources:
             sources = bot["chunks"][:jobs.WIDE_K]
-    return {"start": start, "bot": bot, "bot_id": bot_id, "req": req, "history": history, "remembers": remembers,
+    mark(ctx, "Search", t, f"{len(sources)} of {len(bot['chunks'])} document sections ({bot.get('search', 'keyword')})")
+    return {**ctx, "query_vec": query_vec,
+            "start": start, "bot": bot, "bot_id": bot_id, "req": req, "history": history, "remembers": remembers,
             "job": job, "job_cfg": job_cfg, "tier": tier, "reason": reason, "guard": guard, "sources": sources}
 
 
@@ -248,6 +264,46 @@ def mock_answer(bot: dict, message: str, sources: list[dict], tier: str) -> str:
     return f"[mock-{tier}] I don't have that in {bot['company']}'s documents. Please contact {bot['company']} directly."
 
 
+# ---------- Step 2b: a second look, when the first search found no answer ----------
+
+def second_look_wanted(ctx: dict, doc_answer: str) -> bool:
+    """The model said it has no answer, and there are sections it was not shown."""
+    bot = ctx["bot"]
+    return bool(settings.SECOND_LOOK and ctx["job"] == "answer" and bot_provider(bot) != "mock"
+                and len(ctx["sources"]) < len(bot["chunks"])
+                and improve.is_unanswered(doc_answer) and not router.is_greeting(ctx["req"].message))
+
+
+async def second_look(ctx: dict, first: dict) -> dict:
+    """Search the documents more widely and ask once more.
+
+    Search matches words, so "Where do students sleep?" can miss the Housing section. When the first
+    answer is "I don't have that", SkyMind gives the model the best WIDE_K sections (no minimum score)
+    and asks again. Returns the new answer if it is a real one, else the first answer. The tokens of
+    both calls are counted either way.
+    """
+    bot, started = ctx["bot"], time.perf_counter()
+    hybrid = bot.get("search") == "hybrid"
+    wide = knowledge.retrieve(bot["_index"], bot["chunks"], ctx["req"].message, k=jobs.WIDE_K,
+                              min_score=None if hybrid else 0.0, method=bot.get("search", "keyword"),
+                              query_vec=ctx.get("query_vec"), vectors=bot.get("_vectors"))
+    if not wide or {s["title"] for s in wide} <= {s["title"] for s in ctx["sources"]}:
+        return first  # nothing new to show the model
+    try:
+        second = await call_llm(bot, ctx["history"], ctx["req"].message, first.get("tier", ctx["tier"]), wide)
+    except HTTPException:
+        return first  # the second call failed: keep the honest first answer
+    tokens = {"input_tokens": first["input_tokens"] + second["input_tokens"],
+              "output_tokens": first["output_tokens"] + second["output_tokens"]}
+    if improve.is_unanswered(second["text"]):
+        mark(ctx, "Second look", started, f"searched {len(wide)} sections, still no answer")
+        return {**first, **tokens}
+    ctx["sources"], ctx["second_look"] = wide, True
+    ctx["reason"] += "; the first search found no answer, so SkyMind searched the documents more widely"
+    mark(ctx, "Second look", started, f"searched {len(wide)} sections and found the answer")
+    return {**first, **second, **tokens, "first_token_ms": first.get("first_token_ms"), "streamed": first.get("streamed", False)}
+
+
 # ---------- Step 3: website lookup, when the documents don't have the answer ----------
 
 def website_lookup_wanted(ctx: dict, doc_answer: str) -> bool:
@@ -261,7 +317,10 @@ async def website_lookup(ctx: dict) -> dict | None:
     bot = ctx["bot"]
     if await rate_limited(f"web:{bot['id']}", settings.WEB_LOOKUPS_PER_HOUR, window_s=3600):
         return None
+    started = time.perf_counter()
     found = await web.lookup(state.http, state.redis, bot, ctx["req"].message, bot_provider(bot), settings.LLM_TIMEOUT_S * 3)
+    mark(ctx, "Website", started, (f"found on {web.domain_of(bot['website'])}" if found and found.get("text")
+                                   else f"not found on {web.domain_of(bot['website'])}"))
     if not found:
         return None
     ctx["web_fee"] = found.get("searches", 0) * web.WEB_SEARCH_FEE
@@ -280,9 +339,21 @@ def merge_web(ctx: dict, result: dict, found: dict) -> dict:
 
 # ---------- Step 4: after the answer (memory, cost, gaps, rating id) ----------
 
+def shown_sources(ctx: dict, answer: str) -> list[str]:
+    """Section titles to show under the answer. After a second look the model saw several loosely
+    related sections, so only the one that shares the most words with the answer is named."""
+    sources = ctx["sources"]
+    if not ctx.get("second_look") or len(sources) <= 1:
+        return [s["title"] for s in sources]
+    words = set(knowledge.tokenize(answer))
+    best = max(sources, key=lambda s: len(words & set(knowledge.tokenize(s["title"] + " " + s["text"]))))
+    return [best["title"]]
+
+
 async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
     """Everything after the answer is complete: memory, stats and cost, gap logging, rating id."""
     bot, bot_id, req, r = ctx["bot"], ctx["bot_id"], ctx["req"], state.redis
+    finishing = time.perf_counter()
     tier, reason = ctx["tier"], ctx["reason"]
     if result.get("fallback"):
         tier = result["tier"]
@@ -307,6 +378,7 @@ async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
         cost += ctx["web_fee"]
     answer_id = await improve.remember_answer(r, bot_id, req.session_id, req.message, result["text"], result["model"])
     sources, job = ctx["sources"], ctx["job"]
+    mark(ctx, "Save and record", finishing, f"memory, cost ${cost:.6f}" + (", logged as a gap" if unanswered else ""))
     return ChatResponse(
         reply=result["text"],
         model=result["model"],
@@ -317,7 +389,7 @@ async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
         input_tokens=result["input_tokens"],
         output_tokens=result["output_tokens"],
         cost_usd=round(cost, 8),
-        sources=[s["title"] for s in sources] if job == "answer" and not found else [],  # website answers show their own links
+        sources=shown_sources(ctx, result["text"]) if job == "answer" and not found else [],  # website answers show their own links
         budget_guard=ctx["guard"],
         answer_id=answer_id,
         unanswered=unanswered,
@@ -327,6 +399,8 @@ async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
         web_sources=found["sources"] if found else [],
         first_token_ms=result.get("first_token_ms"),
         streamed=bool(result.get("streamed")),
+        second_look=bool(ctx.get("second_look")),
+        trace=ctx["trace"],
     )
 
 
@@ -396,7 +470,11 @@ async def stream_llm(bot: dict, history: list[dict], message: str, tier: str, so
 async def answer(bot_id: str, req: ChatRequest, request: Request) -> ChatResponse:
     """One question in, one complete answer out: steps 1 to 4."""
     ctx = await prepare_chat(bot_id, req, request)
+    started = time.perf_counter()
     result = await call_llm(ctx["bot"], ctx["history"], req.message, ctx["tier"], ctx["sources"])
+    mark(ctx, "Model", started, f"{result['model']}, {result['input_tokens']} tokens in, {result['output_tokens']} out")
+    if second_look_wanted(ctx, result["text"]):
+        result = await second_look(ctx, result)
     if website_lookup_wanted(ctx, result["text"]):
         found = await website_lookup(ctx)
         if found:
@@ -412,12 +490,15 @@ async def answer_events(ctx: dict):
                         "sources": [s["title"] for s in ctx["sources"]] if job == "answer" else [],
                         "context_sections": len(ctx["sources"])})
     # With website lookup on, the first CHECK_CHARS characters are held back. If the documents'
-    # answer turns out to be "I don't have that", the user never sees it: SkyMind checks the
-    # company's website instead and sends that answer.
+    # answer turns out to be "I don't have that", the user never sees it: SkyMind looks again
+    # (a wider search of the documents, then the company's website) and sends that answer.
+    # Without website lookup the answer streams at once; if it ends up as "I don't have that" and
+    # a second look is possible, the page is told to replace it ("searching", then the new text).
     bot = ctx["bot"]
     lookup_on = bool(bot.get("web_lookup") and bot.get("website") and job == "answer"
                      and not router.is_greeting(req.message))
     held, decided, hide = [], not lookup_on, False
+    started = time.perf_counter()
     try:
         async for kind, value in stream_llm(bot, ctx["history"], req.message, ctx["tier"], ctx["sources"], ctx["start"]):
             if kind == "text":
@@ -433,15 +514,21 @@ async def answer_events(ctx: dict):
                         yield sse("text", {"text": so_far})
                 continue
             result = value
+            mark(ctx, "Model", started, f"{result['model']}, {result['input_tokens']} tokens in, {result['output_tokens']} out"
+                 + (f", first words after {result['first_token_ms']:.0f} ms" if result.get("first_token_ms") else ""))
             if not decided:
                 hide = improve.is_unanswered(result["text"])
                 if not hide and held:
                     yield sse("text", {"text": "".join(held)})
-            if hide:
-                yield sse("searching", {"site": web.domain_of(bot["website"])})
-                found = await website_lookup(ctx)
-                if found:
-                    result = merge_web(ctx, result, found)
+            if hide or second_look_wanted(ctx, result["text"]):
+                if second_look_wanted(ctx, result["text"]):
+                    yield sse("searching", {"site": "", "note": "Looking more widely in my documents..."})
+                    result = await second_look(ctx, result)
+                if hide and website_lookup_wanted(ctx, result["text"]):
+                    yield sse("searching", {"site": web.domain_of(bot["website"])})
+                    found = await website_lookup(ctx)
+                    if found:
+                        result = merge_web(ctx, result, found)
                 yield sse("text", {"text": result["text"]})
             final = await finish_chat(ctx, result)
             yield sse("done", final.model_dump())
