@@ -357,15 +357,40 @@ def merge_web(ctx: dict, result: dict, found: dict) -> dict:
 
 # ---------- Step 4: after the answer (memory, cost, gaps, rating id) ----------
 
+MIN_REFLECTED = 0.5  # a section is named if it is at least half as reflected as the best one
+
+
+def reflected(answer_words: set, section: dict) -> float:
+    """How much of this section's wording turns up in the answer, 0 to 1."""
+    words = set(knowledge.tokenize(section["title"] + " " + section["text"]))
+    return len(answer_words & words) / len(words) if words else 0.0
+
+
+def pick(sources: list[dict]) -> list[dict]:
+    return [{"title": s["title"], "text": s["text"]} for s in sources]
+
+
 def shown_sources(ctx: dict, answer: str) -> list[dict]:
-    """Section titles to show under the answer. After a second look the model saw several loosely
-    related sections, so only the one that shares the most words with the answer is named."""
+    """The sections the answer was actually written from.
+
+    Search casts a wide net (three sections, more after a second look) and the model often uses only
+    some of them. Naming the rest is a false citation: a housing answer was citing "Student Health and
+    Wellness Center", which says nothing about housing, and the source chips are clickable, so anyone
+    opening it sees that for themselves. A section is named only when its wording is reflected in the
+    answer. The bar is relative to the best-matching section, so a long section quoted for one fact is
+    kept while an unused one is dropped. The trace still reports every section search returned.
+    """
     sources = ctx["sources"]
-    if not ctx.get("second_look") or len(sources) <= 1:
-        return [{"title": s["title"], "text": s["text"]} for s in sources]
+    if len(sources) <= 1:
+        return pick(sources)
     words = set(knowledge.tokenize(answer))
-    best = max(sources, key=lambda s: len(words & set(knowledge.tokenize(s["title"] + " " + s["text"]))))
-    return [{"title": best["title"], "text": best["text"]}]
+    scores = [reflected(words, s) for s in sources]
+    best = max(scores)
+    if best == 0:  # nothing to go on (an empty or non-text answer): name them all rather than guess
+        return pick(sources)
+    if ctx.get("second_look"):  # the wide search saw many loosely related sections: name only the best
+        return pick([sources[scores.index(best)]])
+    return pick([s for s, score in zip(sources, scores) if score >= best * MIN_REFLECTED])
 
 
 async def finish_chat(ctx: dict, result: dict) -> ChatResponse:

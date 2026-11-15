@@ -123,3 +123,26 @@ assert "NOT been shown" in p and "from a topic name alone" in p, "must forbid an
 assert "also cover these topics" not in main.orchestrator.build_system_prompt({"company": "X"}, []), \
     "no topic list when the bot has no other sections"
 print("topic list OK: the bot can say what it covers without being shown the text")
+
+# 8. only the sections the answer was really written from are named underneath it.
+#    Search returns three sections for a housing question, one of which is the health centre; the
+#    answer never mentions it, and because the chips are clickable, naming it is a visible false
+#    citation. (Real sections and a real retrieval, not a hand-made example.)
+import knowledge
+unt = next(e for e in examples.EXAMPLES if "North Texas" in e.get("company", ""))
+ch = knowledge.make_chunks(unt["knowledge"])
+got = knowledge.retrieve(knowledge.build_index(ch), ch, "What are the housing options available at unt", k=3, method="bm25")
+assert [s["title"] for s in got] == ["Housing", "Housing contact", "Student Health and Wellness Center (doctor visits)"], got
+housing_answer = ("UNT has 15 residence halls. Living Learning Communities are also available. To apply, use the "
+                  "Housing Portal linked from housing.unt.edu; payments go through your myUNT account. Housing and "
+                  "Residence Life is in the UNT Welcome Center, 1417 Maple St, Denton, TX 76201, housinginfo@unt.edu.")
+named = [s["title"] for s in main.orchestrator.shown_sources({"sources": got}, housing_answer)]
+assert named == ["Housing", "Housing contact"], f"the health centre must not be cited: {named}"
+
+# a section quoted for a single fact is still kept, and one source is never filtered away
+one_line = got[0]["text"].split(". ")[0]
+assert got[0]["title"] in [s["title"] for s in main.orchestrator.shown_sources({"sources": got}, one_line)]
+assert len(main.orchestrator.shown_sources({"sources": got[:1]}, "unrelated text")) == 1
+# after a second look the wide search saw many loose sections: only the best one is named
+assert len(main.orchestrator.shown_sources({"sources": got, "second_look": True}, housing_answer)) == 1
+print("sources OK:", " + ".join(named), "(health centre dropped)")
