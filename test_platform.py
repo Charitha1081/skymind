@@ -159,6 +159,16 @@ with TestClient(main.app) as c:
         assert rule.lower() in sysprompt.lower(), f"missing anti-retraction rule: {rule}"
     ov = main.orchestrator.build_system_prompt({"company": "Acme", "chunks": [{"title": "About Acme", "text": "Acme sells tents."}]}, [])
     assert "COMPANY OVERVIEW" in ov and "sells tents" in ov, "overview is given when search finds nothing"
+    # A name typed in a message is not the person's name: the bot greeted someone as "Ra Subba Rao"
+    # because they typed it as a joke, and it would repeat an insult the same way.
+    for rule in ("do not know who you are talking to", "Never address the person by a name",
+                 "never repeat one back"):
+        assert rule.lower() in sysprompt.lower(), f"missing identity rule: {rule}"
+    # When the documents fall short, send people to the company's own site rather than "contact us".
+    withsite = main.orchestrator.build_system_prompt({"company": "Acme", "website": "https://acme.example"}, [])
+    assert withsite.count("point them to https://acme.example") == 2, "greeting and refusal both name the site"
+    assert "suggest contacting Acme directly" not in withsite
+    assert "suggest contacting X directly" in sysprompt, "no website: fall back to contacting the company"
     # ---- per-company privacy ----
     assert c.get("/bots").status_code == 401, "full bot list must be admin-only"
     assert c.get("/featured").json() == [], "nothing is featured unless seeded"

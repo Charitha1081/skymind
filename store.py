@@ -68,6 +68,12 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "bot"
 
 
+def default_greeting(job: str, name: str, company: str, website: str = "") -> str:
+    """The opening line, naming the company's own site so a refusal later is not a surprise."""
+    site = re.sub(r"^https?://(www\.)?", "", website).rstrip("/") if website else ""
+    return jobs.get(job)["greeting"].format(name=name, company=company, site=site or "their website")
+
+
 def public_info(bot: dict) -> dict:
     return {
         "id": bot["id"],
@@ -179,7 +185,7 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
     if not chunks:
         raise HTTPException(422, "Could not read any text from the documents.")
 
-    greeting = str(body.get("greeting") or jobs.get(job)["greeting"].format(name=name, company=company)).strip()[:200]
+    greeting = str(body.get("greeting") or default_greeting(job, name, company, website)).strip()[:200]
     bot_id = fixed_id or f"{slugify(name)}-{secrets.token_hex(4)}"  # hard to guess
     owner_key = secrets.token_urlsafe(24)  # shown once to the company that deployed it
     notes = list(result["notes"])
@@ -252,6 +258,13 @@ async def seed_examples() -> None:
                                                or bool(bot.get("web_lookup")) != bool(ex.get("web_lookup"))):
                 bot["website"], bot["web_lookup"] = ex.get("website", ""), bool(ex.get("web_lookup"))
                 changed = True
+            # The opening line is stored per bot, so a sample bot keeps an old one until it is refreshed.
+            if not bot.get("owner_email") and not ex.get("greeting"):
+                wanted = default_greeting(ex.get("job", "answer"), ex["bot_name"], ex["company"],
+                                          bot.get("website", ""))[:200]
+                if bot.get("greeting") != wanted:
+                    bot["greeting"] = wanted
+                    changed = True
             if not bot.get("owner_email") and bot.get("sample_hash") != sample_hash:
                 bot["chunks"] = knowledge.make_chunks(ex["knowledge"])
                 bot["sample_hash"] = sample_hash

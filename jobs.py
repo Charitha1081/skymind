@@ -20,7 +20,9 @@ JOBS = {
         "max_message": 4000,
         "max_tokens": None,        # the server default (MAX_ANSWER_TOKENS)
         "log_gaps": True,
-        "greeting": "Hi! I'm the {name} assistant for {company}. How can I help?",
+        # Says up front where answers come from and where it sends you when it has nothing, so the
+        # first refusal is not a surprise. {site} is filled in by store.default_greeting.
+        "greeting": "Hi! I'm the {name} assistant for {company}. I answer from their documents and show my source, and point you to {site} for anything I don't have.",
     },
     "code_review": {
         "label": "Code reviewer",
