@@ -111,3 +111,15 @@ with TestClient(main.app) as c:
         main.orchestrator.bot_provider, providers.call, providers.stream = real
         providers.ANTHROPIC_API_KEY = ""
 print("ALL ORCHESTRATOR TESTS PASSED")
+
+# 7. the model is told which other topics exist, so it can say what it helps with
+#    (it used to describe its whole scope from the two sections search happened to return)
+bot = {"company": "UNT", "chunks": [{"title": t, "text": "..."} for t in
+       ["About UNT", "Housing", "Meal plans", "Parking permits", "AI Expo by SSAI"]]}
+p = main.orchestrator.build_system_prompt(bot, [{"title": "AI Expo by SSAI", "text": "The expo is on Nov 16."}])
+assert "Housing; Meal plans; Parking permits" in p, "other topics must be listed"
+assert "AI Expo by SSAI;" not in p, "the section already shown must not repeat in the list"
+assert "NOT been shown" in p and "from a topic name alone" in p, "must forbid answering from a title"
+assert "also cover these topics" not in main.orchestrator.build_system_prompt({"company": "X"}, []), \
+    "no topic list when the bot has no other sections"
+print("topic list OK: the bot can say what it covers without being shown the text")

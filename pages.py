@@ -1543,6 +1543,10 @@ body { background: var(--bg); }
 .websrc span { color: var(--muted); }
 .websrc a { overflow-wrap: anywhere; }
 .chip.web { background: var(--good-soft); color: var(--good); border-color: transparent; }
+.chip.src { cursor: pointer; border-style: dashed; }
+.chip.src:hover, .chip.src[aria-expanded="true"] { background: var(--sky-soft); border-color: transparent; color: var(--ink); }
+.srcbox { margin-top: 8px; padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--sky); border-radius: 0 8px 8px 0; background: var(--bg); font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; color: var(--ink); max-height: 260px; overflow: hidden; }
+.srcbox h4 { margin: 0 0 6px; font-size: 12.5px; font-weight: 650; color: var(--muted); }
 .trace { margin-top: 10px; font-size: 12.5px; white-space: normal; color: var(--muted); }
 .trace summary { cursor: pointer; width: fit-content; padding: 2px 0; font-weight: 550; }
 .trace summary:hover { color: var(--ink); }
@@ -1772,7 +1776,33 @@ function addMessage(text, who, data) {
     if (data.streamed && data.first_token_ms) { meta.append(chip("first words in " + ms(data.first_token_ms))); }
     meta.append(chip((data.streamed ? "done in " : "") + ms(data.latency_ms)));
     if (data.history_messages) { meta.append(chip("remembers " + data.history_messages + " messages")); }
-    (data.sources || []).forEach(function (s) { meta.append(chip("Source: " + s)); });
+    var texts = {};
+    (data.source_text || []).forEach(function (s) { texts[s.title] = s.text; });
+    (data.sources || []).forEach(function (s) {
+      var c = chip("Source: " + s, texts[s] ? "src" : "");
+      if (!texts[s]) { meta.append(c); return; }
+      c.setAttribute("role", "button");
+      c.setAttribute("tabindex", "0");
+      c.setAttribute("aria-expanded", "false");
+      c.title = "Show the exact section this answer came from";
+      var open = function () {
+        var shown = c.getAttribute("aria-expanded") === "true";
+        c.setAttribute("aria-expanded", shown ? "false" : "true");
+        if (shown) { if (c.box) { c.box.remove(); c.box = null; } return; }
+        var box = document.createElement("div");
+        box.className = "srcbox";
+        var h = document.createElement("h4");
+        h.textContent = "From the documents \u2014 " + s;
+        var p = document.createElement("div");
+        p.textContent = texts[s];
+        box.append(h, p);
+        meta.insertAdjacentElement("afterend", box);
+        c.box = box;
+      };
+      c.addEventListener("click", open);
+      c.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+      meta.append(c);
+    });
     if (data.job && data.job !== "answer" && data.context_sections) {
       meta.append(chip((data.job === "code_review" ? "Checked against " : "Used ") + data.context_sections + " document sections"));
     }
