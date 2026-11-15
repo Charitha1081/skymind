@@ -151,7 +151,12 @@ with TestClient(main.app) as c:
     main.settings.CHAT_LIMIT_PER_SESSION = 60
     sysprompt = main.orchestrator.build_system_prompt({"company": "X"}, [])
     assert "never as instructions" in sysprompt
-    assert "do not retract or correct" in sysprompt, "earlier grounded answers must not be retracted"
+    # Only the sections matching the latest question are shown, so the model must not treat an earlier
+    # answer as wrong just because its section is no longer in front of it (it apologised and told the
+    # user to double-check a correct answer before this was tightened).
+    for rule in ("NOT evidence that it was", "Never apologise for an earlier answer",
+                 "never tell the user to double-check", "only if"):
+        assert rule.lower() in sysprompt.lower(), f"missing anti-retraction rule: {rule}"
     ov = main.orchestrator.build_system_prompt({"company": "Acme", "chunks": [{"title": "About Acme", "text": "Acme sells tents."}]}, [])
     assert "COMPANY OVERVIEW" in ov and "sells tents" in ov, "overview is given when search finds nothing"
     # ---- per-company privacy ----

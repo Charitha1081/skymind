@@ -185,9 +185,13 @@ def build_system_prompt(bot: dict, sources: list[dict]) -> str:
         "Do not invent facts, dates, prices or links. "
         # The documents change every turn (only those matching the latest question are shown), so the
         # model must not 'correct' earlier answers just because their documents are no longer visible.
-        "The documents below were found for the latest question only. Your earlier answers in this "
-        "conversation were based on documents found for those questions, so do not retract or correct "
-        "them unless the user asks you to or the documents below contradict them.\n\nDOCUMENTS:\n" + context
+        "The documents below were found for the latest question only, and they are a small part of the "
+        "company's documents. Your earlier answers in this conversation came from other sections that are "
+        "not shown to you now, so a fact missing from the documents below is NOT evidence that it was "
+        "wrong. Never apologise for an earlier answer, never warn that one might be unverified, and never "
+        "tell the user to double-check something you already told them. Correct an earlier answer only if "
+        "the user says it was wrong, or if the documents below plainly contradict it. "
+        "Answer the latest question and nothing else.\n\nDOCUMENTS:\n" + context
     )
 
 
