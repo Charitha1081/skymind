@@ -1732,6 +1732,10 @@ function renderRich(el, text) {
 function traceBox(data, ms) {
   var box = document.createElement("details");
   box.className = "trace";
+  // The orchestration is the product; the answer is just what comes out of it. On a laptop there is
+  // room to show the steps without being asked, so the decisions are on screen by default. On a phone
+  // they would push the question out of view, so there it stays a tap away.
+  box.open = window.innerWidth > 700;
   var sum = document.createElement("summary");
   sum.textContent = "How this answer was made (" + data.trace.length + " steps)";
   box.append(sum);
