@@ -1762,8 +1762,11 @@ function traceBox(data, ms) {
   box.append(foot);
   return box;
 }
-function addMessage(text, who, data) {
-  var row = document.createElement("div");
+// `into` reuses an existing row instead of making a new one. A streamed answer is written into the
+// bubble it was streaming into, so the finished text and its sources replace it in place. Removing
+// that row and appending a fresh message made the answer vanish and come back as a separate block.
+function addMessage(text, who, data, into) {
+  var row = into || document.createElement("div");
   row.className = "msg " + who;
   var b = document.createElement("div");
   b.className = "bubble";
@@ -1833,8 +1836,8 @@ function addMessage(text, who, data) {
     if (data.trace && data.trace.length) { b.append(traceBox(data, ms)); }
     if (data.answer_id) { b.append(rateRow(data.answer_id)); }
   }
-  row.append(b);
-  $("log").append(row);
+  row.replaceChildren(b);
+  if (!into) { $("log").append(row); }
   $("log").scrollTop = $("log").scrollHeight;
   return row;
 }
@@ -2008,9 +2011,9 @@ async function askStreaming(text, wait) {
     }
   } catch (e) { failure = failure || "The connection was interrupted. Please ask again."; }
   wait.remove();
-  if (row) row.remove();
-  if (done) { addMessage(done.reply, "bot", done); }
+  if (done) { addMessage(done.reply, "bot", done, row); }  // in place: the sources join the answer already on screen
   else {
+    if (row) row.remove();
     if (got) addMessage(got, "bot", null);
     addMessage(failure || "The answer didn't finish. Please ask again.", "bot", null);
   }
