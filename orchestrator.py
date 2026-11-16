@@ -345,7 +345,10 @@ async def website_lookup(ctx: dict) -> dict | None:
     if await rate_limited(f"web:{bot['id']}", settings.WEB_LOOKUPS_PER_HOUR, window_s=3600):
         return None
     started = time.perf_counter()
-    found = await web.lookup(state.http, state.redis, bot, ctx["req"].message, bot_provider(bot), settings.LLM_TIMEOUT_S * 3)
+    # A follow-up often names no subject ("how much after 5 days?"), so send what they asked just before.
+    prior = [m["content"] for m in ctx.get("history", []) if m.get("role") == "user"][-1:]
+    found = await web.lookup(state.http, state.redis, bot, ctx["req"].message, bot_provider(bot),
+                             settings.LLM_TIMEOUT_S * 3, context=" ".join(prior))
     mark(ctx, "Website", started, (f"found on {web.domain_of(bot['website'])}" if found and found.get("text")
                                    else f"not found on {web.domain_of(bot['website'])}"))
     if not found:
