@@ -237,7 +237,9 @@ async def seed_examples() -> None:
     if not await state.redis.set("seed_lock", "1", nx=True, ex=60):
         return  # another worker is seeding
     created = []
-    for ex in examples.EXAMPLES:
+    # Only the sample bots in DEPLOY_KEYS go live. The others stay in examples.py for the tests, which
+    # need a second company to prove one company's documents and memory never reach another's.
+    for ex in (e for e in examples.EXAMPLES if e["key"] in examples.DEPLOY_KEYS):
         bot_id = slugify(ex["bot_name"])
         raw = await state.redis.get(bot_key(bot_id))
         if raw is None:

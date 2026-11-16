@@ -59,7 +59,10 @@ with TestClient(main.app) as c:
     print("UNT apply ->", r["tier"], r["sources"][:2])
     assert r["tier"] == "strong" and r["sources"][0].startswith("How to apply")
 
-    r = chat(c, U, "s1", "What is your return policy for hiking boots?")
+    # Retail wording that shares no word with any UNT section, so search itself comes back empty.
+    # (A question that does scrape a weak match is covered in test_orchestrator: the answer
+    # refuses and the chips are dropped.)
+    r = chat(c, U, "s1", "What is the warranty on a sleeping bag?")
     print("UNT off-topic ->", r["reply"])
     assert "don't have that" in r["reply"] and r["sources"] == []
 
@@ -189,3 +192,15 @@ with TestClient(main.app) as c:
     print("security OK: admin token, 413, session validation, headers, rate limit, prompt guard")
 
 print("ALL PLATFORM TESTS PASSED")
+
+# Only UNT bots are deployed as samples. A second fictional company on the live site confused people,
+# but the tests still need one, so it stays in examples.py and simply is not seeded.
+import examples as _ex
+deployed = [e for e in _ex.EXAMPLES if e["key"] in _ex.DEPLOY_KEYS]
+assert deployed, "something must be deployed"
+for e in deployed:
+    assert e["company"] == "University of North Texas", f"{e['bot_name']} is not a UNT bot"
+assert any(e.get("job") == "code_review" for e in deployed), "the code reviewer must still be deployed"
+assert any(e["company"] != "University of North Texas" for e in _ex.EXAMPLES), \
+    "a second company must remain in the file for the isolation tests"
+print("sample bots OK:", ", ".join(e["bot_name"] for e in deployed))

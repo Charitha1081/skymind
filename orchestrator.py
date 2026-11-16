@@ -393,6 +393,13 @@ def shown_sources(ctx: dict, answer: str) -> list[dict]:
     kept while an unused one is dropped. The trace still reports every section search returned.
     """
     sources = ctx["sources"]
+    if improve.is_unanswered(answer):
+        # An answer that says "I don't have that" was written from nothing, so it cites nothing.
+        # Search casts a wide enough net that an off-topic question still lands on some loosely
+        # related section ("return policy for hiking boots" reaches the Wi-Fi section, which
+        # mentions an acceptable use policy), and a chip under a refusal reads as a citation
+        # for an answer that does not exist.
+        return []
     if len(sources) <= 1:
         return pick(sources)
     words = set(knowledge.tokenize(answer))

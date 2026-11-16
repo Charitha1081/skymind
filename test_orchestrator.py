@@ -132,12 +132,27 @@ import knowledge
 unt = next(e for e in examples.EXAMPLES if "North Texas" in e.get("company", ""))
 ch = knowledge.make_chunks(unt["knowledge"])
 got = knowledge.retrieve(knowledge.build_index(ch), ch, "What are the housing options available at unt", k=3, method="bm25")
-assert [s["title"] for s in got] == ["Housing", "Housing contact", "Student Health and Wellness Center (doctor visits)"], got
+# Compared as a set: the two housing sections score within 0.15 of the health centre, so their
+# order shifts whenever the document set grows. What matters is which three come back.
+assert set(s["title"] for s in got) == {"Housing", "Housing contact",
+                                        "Student Health and Wellness Center (doctor visits)"}, got
 housing_answer = ("UNT has 15 residence halls. Living Learning Communities are also available. To apply, use the "
                   "Housing Portal linked from housing.unt.edu; payments go through your myUNT account. Housing and "
                   "Residence Life is in the UNT Welcome Center, 1417 Maple St, Denton, TX 76201, housinginfo@unt.edu.")
 named = [s["title"] for s in main.orchestrator.shown_sources({"sources": got}, housing_answer)]
-assert named == ["Housing", "Housing contact"], f"the health centre must not be cited: {named}"
+assert sorted(named) == ["Housing", "Housing contact"], f"the health centre must not be cited: {named}"
+
+# 8b. an answer that says it has nothing cites nothing. With 34 sections, an off-topic question
+#     still scrapes a weak match ("return policy for hiking boots" reaches the Wi-Fi section,
+#     which mentions an acceptable use policy), and a chip under a refusal is a citation for an
+#     answer that was never written from it.
+off = knowledge.retrieve(knowledge.build_index(ch), ch, "What is your return policy for hiking boots?",
+                         k=3, method="bm25")
+assert off, "this question is only interesting while search still returns something"
+refusal = ("I don't have that in the documents I have for the University of North Texas. "
+           "For anything I don't cover, please check unt.edu.")
+assert main.orchestrator.shown_sources({"sources": off}, refusal) == [], "a refusal must show no sources"
+print("sources OK: only sections the answer used, and none at all behind a refusal")
 
 # a section quoted for a single fact is still kept, and one source is never filtered away
 one_line = got[0]["text"].split(". ")[0]
