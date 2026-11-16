@@ -562,8 +562,8 @@ DEPLOY_BODY = _header("deploy") + r"""
             <div class="hint" id="job_hint">For customers or staff: FAQs, policies, products.</div></div>
         </div>
         <div class="row">
-          <div><label for="bot_name">Bot name</label><input id="bot_name" placeholder="Acme Support" maxlength="60"></div>
-          <div><label for="company">Company</label><input id="company" placeholder="Acme Outdoor Gear" maxlength="80"></div>
+          <div><label for="bot_name">Bot name</label><input id="bot_name" placeholder="Support Assistant" maxlength="60"></div>
+          <div><label for="company">Company</label><input id="company" placeholder="Your company name" maxlength="80"></div>
         </div>
         <div class="row">
           <div><label for="users">People chatting at the same time</label><input id="users" type="number" min="1" value="100" inputmode="numeric"></div>

@@ -54,8 +54,13 @@ async def list_providers():
 
 @api.get("/examples")
 async def get_examples():
-    """Sample customers the deploy page can load with one click."""
-    return examples.EXAMPLES
+    """Sample customers the deploy page can load with one click.
+
+    Only the ones we actually deploy are offered. A second fictional company on the page
+    confused people into thinking the platform was tied to it, so Acme stays in examples.py
+    for the isolation tests and is not shown here.
+    """
+    return [e for e in examples.EXAMPLES if e["key"] in examples.DEPLOY_KEYS]
 
 
 @api.get("/", response_class=HTMLResponse)

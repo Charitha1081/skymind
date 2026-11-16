@@ -31,7 +31,10 @@ with TestClient(main.app) as c:
         r = c.get(path)
         assert r.status_code == 200 and "text/html" in r.headers["content-type"], path
     print("4 pages serve OK")
-    assert len(c.get("/examples").json()) == 4
+    # The deploy page only offers the samples we actually deploy, so Acme is not listed there.
+    offered = c.get("/examples").json()
+    assert [e["key"] for e in offered] == list(examples.DEPLOY_KEYS), offered
+    assert all(e["company"] == "University of North Texas" for e in offered), offered
 
     # deploy the two sample customers
     unt = deploy(c, examples.EXAMPLES[0])
