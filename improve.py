@@ -15,6 +15,7 @@ Redis keys (all per bot, removed with the bot):
   feedback:{bot}     list (JSON): the latest not-helpful answers
 """
 import json
+import re
 import secrets
 import time
 
@@ -70,10 +71,21 @@ def bot_keys(bot_id: str) -> list[str]:
     return [gaps_key(bot_id), gaptext_key(bot_id), feedback_key(bot_id), gapweb_key(bot_id)]
 
 
+# The list above matches fixed phrases, so any word slipped into the middle defeats it: "I don't have
+# the FEE details" missed "don't have the details", the refusal was scored as an answer, and the website
+# lookup that would have answered it never ran. This catches "I don't have <up to a few words> <thing>".
+# It needs the leading "I" so a real answer like "you don't have to pay a fee" is not read as a refusal.
+_NO_ANSWER = re.compile(
+    r"\bi (?:don't|do not|cannot|can't) (?:have|see|find)\b[^.!?]{0,45}?"
+    r"\b(information|details|specifics|data|list|answer|figures?|fees?|prices?|costs?|rates?|numbers?|"
+    r"dates?|times?|records?|policy|policies|schedules?|hours?)\b"
+)
+
+
 def is_unanswered(reply: str) -> bool:
     """True when the bot said it couldn't answer (checked near the start of the reply)."""
     head = reply[:CHECK_CHARS].lower().replace("’", "'")
-    return any(m in head for m in REFUSAL_MARKERS)
+    return any(m in head for m in REFUSAL_MARKERS) or bool(_NO_ANSWER.search(head))
 
 
 def _normalise(question: str) -> tuple[str, str]:
