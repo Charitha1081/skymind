@@ -189,6 +189,11 @@ def _is_public(ip: str) -> bool:
 
 async def check_public_url(url: str, resolve=None) -> str:
     """Raise IngestError unless url is http(s) on port 80/443 and every address it resolves to is public."""
+    return (await _checked(url, resolve))[0]
+
+
+async def _checked(url: str, resolve=None) -> tuple[str, str]:
+    """(url, ip): check_public_url, plus one checked address to connect to (so DNS can't change it after)."""
     parts = urlsplit(url.strip())
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise IngestError("Use a full web address starting with https://")
@@ -203,7 +208,14 @@ async def check_public_url(url: str, resolve=None) -> str:
         raise IngestError(f"Could not find the website {host}.") from None
     if not ips or not all(_is_public(ip) for ip in ips):
         raise IngestError("That address is not a public website, so SkyMind won't fetch it.")
-    return parts.geturl()
+    return parts.geturl(), ips[0].strip("[]")
+
+
+def _pinned(url: str, ip: str) -> str:
+    """url with its host replaced by the checked ip (the Host header and TLS name keep the real host)."""
+    parts = urlsplit(url)
+    host = f"[{ip}]" if ":" in ip else ip
+    return parts._replace(netloc=host + (f":{parts.port}" if parts.port else "")).geturl()
 
 
 def _looks_like_ip(host: str) -> bool:
@@ -231,10 +243,15 @@ async def fetch_page(url: str, client: httpx.AsyncClient | None = None, resolve=
     client = client or httpx.AsyncClient(timeout=FETCH_TIMEOUT_S, follow_redirects=False)
     try:
         for _ in range(MAX_REDIRECTS + 1):
-            url = await check_public_url(url, resolve)
+            url, ip = await _checked(url, resolve)
+            host = urlsplit(url).hostname
+            # Connect to the address that was checked, not a fresh DNS answer (blocks DNS rebinding).
+            # The Host header and the TLS server name (SNI, also used to verify the certificate) stay the real host.
             try:
-                async with client.stream("GET", url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain,application/pdf"},
-                                         timeout=FETCH_TIMEOUT_S) as resp:
+                async with client.stream("GET", _pinned(url, ip),
+                                         headers={"Host": urlsplit(url).netloc, "User-Agent": USER_AGENT,
+                                                  "Accept": "text/html,text/plain,application/pdf"},
+                                         extensions={"sni_hostname": host}, timeout=FETCH_TIMEOUT_S) as resp:
                     if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("location"):
                         url = urljoin(url, resp.headers["location"])
                         continue

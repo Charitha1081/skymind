@@ -9,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from runtime import state
-from security import current_user, is_admin, login_required_to_deploy, rate_limited
+from security import client_ip, current_user, is_admin, login_required_to_deploy, rate_limited
 from store import all_bots, bot_stats, public_info, quality_counts
 
 api = APIRouter(tags=["Account"])
@@ -24,8 +24,7 @@ async def google_login(req: GoogleLogin, request: Request):
     """Exchange a Google ID token for a SkyMind session cookie."""
     if not auth.google_enabled():
         raise HTTPException(404, "Google sign-in is not set up on this server.")
-    client_ip = request.client.host if request.client else "unknown"
-    if await rate_limited(f"login:{client_ip}", 20):
+    if await rate_limited(f"login:{client_ip(request)}", 20):
         raise HTTPException(429, "Too many sign-in attempts. Please wait a minute.")
     try:
         user = await run_in_threadpool(auth.verify_google_token, req.credential)  # may fetch Google's keys

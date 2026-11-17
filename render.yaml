@@ -24,7 +24,9 @@ services:
       - key: SEED_EXAMPLES
         value: "true"                # free Redis is wiped on restart; re-create UNT Helper and Acme Support
       - key: FORWARDED_ALLOW_IPS
-        value: "*"                   # trust Render's proxy so rate limits see each visitor's address
+        value: "*"                   # trust Render's proxy for https (X-Forwarded-Proto), so sign-in cookies are Secure
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"                   # rate limits use the address Render's proxy appended, not one the visitor wrote
       - key: CHAT_LIMIT_PER_IP
         value: "30"                  # messages per minute per visitor
       - key: CHAT_LIMIT_PER_SESSION

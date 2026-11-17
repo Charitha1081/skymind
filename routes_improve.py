@@ -13,9 +13,10 @@ import knowledge
 import orchestrator
 import providers
 import settings
+import web
 from runtime import log, state
 from security import is_admin, rate_limited, require_importer, require_owner
-from store import bot_key, embed_or_fail, load_bot, record_stats, stats_key, vectors_key
+from store import embed_or_fail, load_bot, record_stats, stats_key, update_bot, vectors_key
 
 api = APIRouter(tags=["Improve"])
 
@@ -92,12 +93,19 @@ async def suggest_fix(bot_id: str, req: SuggestFix, request: Request):
         draft = fixer.extractive_draft(evidence)
         missing = [q for q, hits in evidence.items() if not hits]
 
-    raw = await r.get(bot_key(bot_id))  # remember the site for next time
-    if raw:
-        stored = json.loads(raw)
-        stored["website"] = req.url.strip()[:2000]
-        await r.set(bot_key(bot_id), json.dumps(stored))
-        state.bot_cache.pop(bot_id, None)
+    # Remember the site for next time, but never replace one the company already set (on /web it is checked
+    # and normalised, and the website lookup and the bot's "see our site" line use it).
+    if not bot.get("website"):
+        try:
+            site = web.normalise_website(req.url)
+        except ValueError:
+            site = ""
+        if site:
+            async def remember(stored, _read):
+                stored.setdefault("website", "")
+                if not stored["website"]:
+                    stored["website"] = site
+            await update_bot(bot_id, remember)
 
     keys = {g["question"]: g["key"] for g in gaps}
     missing_set = set(missing)
@@ -125,23 +133,25 @@ async def update_knowledge(bot_id: str, req: KnowledgeUpdate, request: Request):
     new_chunks = knowledge.make_chunks(req.text)
     if not new_chunks:
         raise HTTPException(422, "Could not read any text to add.")
-    raw = await state.redis.get(bot_key(bot_id))
-    stored = json.loads(raw)
-    chunks = new_chunks if req.mode == "replace" else stored["chunks"] + new_chunks
-    total = sum(len(c["text"]) for c in chunks)
-    if total > settings.MAX_KNOWLEDGE_CHARS:
-        raise HTTPException(422, f"Documents would be too long ({total:,} of {settings.MAX_KNOWLEDGE_CHARS:,} characters).")
-    if stored.get("search") == "hybrid":  # keep one vector per chunk
-        if req.mode == "replace":
-            vectors = await embed_or_fail(chunks)
-        else:
-            old = json.loads(await state.redis.get(vectors_key(bot_id)) or "[]")
+    async def change(stored, read):
+        chunks = new_chunks if req.mode == "replace" else stored["chunks"] + new_chunks
+        total = sum(len(c["text"]) for c in chunks)
+        if total > settings.MAX_KNOWLEDGE_CHARS:
+            raise HTTPException(422, f"Documents would be too long ({total:,} of {settings.MAX_KNOWLEDGE_CHARS:,} characters).")
+        stored["chunks"] = chunks
+        if stored.get("search") != "hybrid":
+            return None
+        # keep exactly one vector per chunk: if the stored vectors are missing or don't match the old
+        # chunks (evicted, never written), embed everything again rather than misalign them
+        old = json.loads(await read(vectors_key(bot_id)) or "[]") if req.mode == "append" else []
+        if req.mode == "append" and len(old) == len(chunks) - len(new_chunks):
             vectors = old + await embed_or_fail(new_chunks)
-        await state.redis.set(vectors_key(bot_id), json.dumps(vectors))
-    stored["chunks"] = chunks
-    await state.redis.set(bot_key(bot_id), json.dumps(stored))
-    state.bot_cache.pop(bot_id, None)
-    return {"sections": len(chunks), "added": len(new_chunks), "characters": total}
+        else:
+            vectors = await embed_or_fail(chunks)
+        return {vectors_key(bot_id): json.dumps(vectors)}
+    stored = await update_bot(bot_id, change, watch=(vectors_key(bot_id),))
+    total = sum(len(c["text"]) for c in stored["chunks"])
+    return {"sections": len(stored["chunks"]), "added": len(new_chunks), "characters": total}
 
 
 class Feedback(BaseModel):

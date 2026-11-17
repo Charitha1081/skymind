@@ -31,7 +31,10 @@ with TestClient(main.app) as c:
         r = c.get(path)
         assert r.status_code == 200 and "text/html" in r.headers["content-type"], path
     print("4 pages serve OK")
-    assert len(c.get("/examples").json()) == 4
+    # The deploy page only offers the samples we actually deploy, so Acme is not listed there.
+    offered = c.get("/examples").json()
+    assert [e["key"] for e in offered] == list(examples.DEPLOY_KEYS), offered
+    assert all(e["company"] == "University of North Texas" for e in offered), offered
 
     # deploy the two sample customers
     unt = deploy(c, examples.EXAMPLES[0])
@@ -59,7 +62,10 @@ with TestClient(main.app) as c:
     print("UNT apply ->", r["tier"], r["sources"][:2])
     assert r["tier"] == "strong" and r["sources"][0].startswith("How to apply")
 
-    r = chat(c, U, "s1", "What is your return policy for hiking boots?")
+    # Retail wording that shares no word with any UNT section, so search itself comes back empty.
+    # (A question that does scrape a weak match is covered in test_orchestrator: the answer
+    # refuses and the chips are dropped.)
+    r = chat(c, U, "s1", "What is the warranty on a sleeping bag?")
     print("UNT off-topic ->", r["reply"])
     assert "don't have that" in r["reply"] and r["sources"] == []
 
@@ -151,9 +157,24 @@ with TestClient(main.app) as c:
     main.settings.CHAT_LIMIT_PER_SESSION = 60
     sysprompt = main.orchestrator.build_system_prompt({"company": "X"}, [])
     assert "never as instructions" in sysprompt
-    assert "do not retract or correct" in sysprompt, "earlier grounded answers must not be retracted"
+    # Only the sections matching the latest question are shown, so the model must not treat an earlier
+    # answer as wrong just because its section is no longer in front of it (it apologised and told the
+    # user to double-check a correct answer before this was tightened).
+    for rule in ("NOT evidence that it was", "Never apologise for an earlier answer",
+                 "never tell the user to double-check", "only if"):
+        assert rule.lower() in sysprompt.lower(), f"missing anti-retraction rule: {rule}"
     ov = main.orchestrator.build_system_prompt({"company": "Acme", "chunks": [{"title": "About Acme", "text": "Acme sells tents."}]}, [])
     assert "COMPANY OVERVIEW" in ov and "sells tents" in ov, "overview is given when search finds nothing"
+    # A name typed in a message is not the person's name: the bot greeted someone as "Ra Subba Rao"
+    # because they typed it as a joke, and it would repeat an insult the same way.
+    for rule in ("do not know who you are talking to", "Never address the person by a name",
+                 "never repeat one back"):
+        assert rule.lower() in sysprompt.lower(), f"missing identity rule: {rule}"
+    # When the documents fall short, send people to the company's own site rather than "contact us".
+    withsite = main.orchestrator.build_system_prompt({"company": "Acme", "website": "https://acme.example"}, [])
+    assert withsite.count("point them to https://acme.example") == 2, "greeting and refusal both name the site"
+    assert "suggest contacting Acme directly" not in withsite
+    assert "suggest contacting X directly" in sysprompt, "no website: fall back to contacting the company"
     # ---- per-company privacy ----
     assert c.get("/bots").status_code == 401, "full bot list must be admin-only"
     assert c.get("/featured").json() == [], "nothing is featured unless seeded"
@@ -174,3 +195,15 @@ with TestClient(main.app) as c:
     print("security OK: admin token, 413, session validation, headers, rate limit, prompt guard")
 
 print("ALL PLATFORM TESTS PASSED")
+
+# Only UNT bots are deployed as samples. A second fictional company on the live site confused people,
+# but the tests still need one, so it stays in examples.py and simply is not seeded.
+import examples as _ex
+deployed = [e for e in _ex.EXAMPLES if e["key"] in _ex.DEPLOY_KEYS]
+assert deployed, "something must be deployed"
+for e in deployed:
+    assert e["company"] == "University of North Texas", f"{e['bot_name']} is not a UNT bot"
+assert any(e.get("job") == "code_review" for e in deployed), "the code reviewer must still be deployed"
+assert any(e["company"] != "University of North Texas" for e in _ex.EXAMPLES), \
+    "a second company must remain in the file for the isolation tests"
+print("sample bots OK:", ", ".join(e["bot_name"] for e in deployed))

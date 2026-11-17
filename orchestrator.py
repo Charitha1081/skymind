@@ -36,8 +36,8 @@ import router
 import settings
 import web
 from runtime import log, state
-from security import current_user, rate_limited
-from store import load_bot, load_history, record_stats, save_turn, stats_key
+from security import client_ip, current_user, is_admin, rate_limited
+from store import add_month_cost, load_bot, load_history, month_spent, record_stats, save_turn, stats_key
 
 
 class ChatRequest(BaseModel):
@@ -87,7 +87,6 @@ async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
     """
     start = time.perf_counter()
     bot = await load_bot(bot_id)
-    r = state.redis
 
     # Who may use this bot is the company's choice: public, any Google account, or certain domains/emails.
     user = await current_user(request)
@@ -99,13 +98,14 @@ async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
         hint = f" It is for {', '.join('@' + d for d in domains)} accounts." if domains else ""
         raise HTTPException(403, f"{user['email']} doesn't have access to this assistant.{hint}")
 
-    # Abuse protection: per-conversation and (optional) per-address limits, then a hard spending stop.
-    client_ip = request.client.host if request.client else "unknown"
-    if await rate_limited(f"s:{bot_id}:{req.session_id}", settings.CHAT_LIMIT_PER_SESSION) or await rate_limited(
-        f"ip:{client_ip}", settings.CHAT_LIMIT_PER_IP
+    # Abuse protection: per-conversation and per-address limits, then a hard spending stop. The session id
+    # is chosen by the browser, so only the per-address limit stops a script that sends a new id each time.
+    # Admins (evaluate.py and loadtest.py use the admin token) are not limited by address.
+    if await rate_limited(f"s:{bot_id}:{req.session_id}", settings.CHAT_LIMIT_PER_SESSION) or (
+        not await is_admin(request) and await rate_limited(f"ip:{client_ip(request)}", settings.CHAT_LIMIT_PER_IP)
     ):
         raise HTTPException(429, "Too many messages. Please wait a minute and try again.")
-    spent = float(await r.hget(stats_key(bot_id), "actual_cost_usd") or 0)
+    spent = await month_spent(bot_id)  # this calendar month only: the budget is monthly
     if spent >= max(bot["llm_budget"], 1.0) * settings.HARD_STOP_FACTOR:
         raise HTTPException(429, f"{bot['company']}'s assistant has reached its monthly limit. Please contact {bot['company']} directly.")
     remembers = bot["spec"]["memory"] != ["none"]
@@ -236,7 +236,10 @@ async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sour
 
     # Reliability: retry a busy/failed call once, then fall back from the strong to the cheap model.
     plan = [tier, tier] + (["cheap"] if tier == "strong" else [])
+    skip_strong = False
     for attempt, use_tier in enumerate(plan):
+        if skip_strong and use_tier == "strong":
+            continue
         try:
             result = await providers.call(
                 state.http, provider, use_tier, system, messages,
@@ -246,7 +249,12 @@ async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sour
             # Full details go to the server log only; the browser gets a plain message.
             log.warning("LLM error (%s %s, attempt %d): %s", provider, use_tier, attempt + 1, err)
             if not err.retryable:
-                break  # bad key, unknown model or bad request: retrying won't help
+                # bad key, unknown model or bad request: retrying the same model won't help, but the
+                # cheap model may still work (e.g. STRONG_MODEL names a model this account can't use)
+                if use_tier == "strong" and "cheap" in plan:
+                    skip_strong = True
+                    continue
+                break
             await asyncio.sleep(0.5 * (attempt + 1))
             continue
         text = result["text"].strip()
@@ -436,6 +444,7 @@ async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
         pipe.hincrbyfloat(stats_key(bot_id), "actual_cost_usd", ctx["web_fee"])
         pipe.hincrbyfloat(stats_key(bot_id), "all_strong_cost_usd", ctx["web_fee"])
         pipe.hincrby(stats_key(bot_id), "web_searches", ctx.get("web_searches", 0))
+        add_month_cost(pipe, bot_id, ctx["web_fee"])
         await pipe.execute()
         cost += ctx["web_fee"]
     answer_id = await improve.remember_answer(r, bot_id, req.session_id, req.message, result["text"], result["model"])

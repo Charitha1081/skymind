@@ -86,6 +86,17 @@ async def require_admin(request: Request) -> None:
         raise HTTPException(401, "Admin token required. Find it in the server window (SkyMind admin token: ...).")
 
 
+def client_ip(request: Request) -> str:
+    """The visitor's address for rate limits. With TRUSTED_PROXY_HOPS set, read X-Forwarded-For from the
+    right: the left part is whatever the visitor sent, so trusting it (e.g. uvicorn's --forwarded-allow-ips "*")
+    would let anyone pick a new address per request and skip every per-address limit."""
+    hops = settings.TRUSTED_PROXY_HOPS
+    forwarded = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    if hops > 0 and forwarded:
+        return forwarded[-min(hops, len(forwarded))]
+    return request.client.host if request.client else "unknown"
+
+
 def login_required_to_deploy() -> bool:
     if settings.REQUIRE_LOGIN_TO_DEPLOY in ("true", "1", "yes"):
         return True
@@ -119,8 +130,7 @@ async def require_importer(request: Request) -> None:
     admin = await is_admin(request)
     if login_required_to_deploy() and not admin and not await current_user(request):
         raise HTTPException(401, "Sign in with Google to import documents.")
-    client_ip = request.client.host if request.client else "unknown"
-    if not admin and await rate_limited(f"import:{client_ip}", settings.IMPORT_LIMIT_PER_HOUR, window_s=3600):
+    if not admin and await rate_limited(f"import:{client_ip(request)}", settings.IMPORT_LIMIT_PER_HOUR, window_s=3600):
         raise HTTPException(429, "Too many imports from your address this hour. Please try again later.")
 
 

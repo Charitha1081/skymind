@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 import router
 from runtime import state
 from security import require_admin
-from store import BOTS_SET, bot_key, bot_stats, latency_key, quality_counts, sessions_key, stats_key
+from store import BOTS_SET, bot_key, bot_stats, latency_key, month_spent, quality_counts, sessions_key, stats_key
 
 api = APIRouter(tags=["Admin"])
 
@@ -40,7 +40,7 @@ async def admin_overview():
                     "latency_ok": plan["latency_ok"],
                 },
                 "llm_budget_usd": round(bot["llm_budget"], 2),
-                "budget_guard": stats["actual_cost_usd"] >= bot["llm_budget"],
+                "budget_guard": await month_spent(bot_id) >= bot["llm_budget"],
                 "stats": stats,
                 "owner_email": bot.get("owner_email", ""),
                 "access": (bot.get("access") or {}).get("mode", "public"),
@@ -68,7 +68,8 @@ async def reset_all_stats():
     """Clear the usage counters of every bot (bots and their documents stay)."""
     r = state.redis
     for bot_id in await r.smembers(BOTS_SET):
-        await r.delete(stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id))
+        month_keys = [k async for k in r.scan_iter(match=f"monthcost:{bot_id}:*")]
+        await r.delete(stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id), *month_keys)
     return {"cleared": True}
 
 
