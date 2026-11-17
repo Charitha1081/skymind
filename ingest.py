@@ -189,6 +189,12 @@ def _is_public(ip: str) -> bool:
 
 async def check_public_url(url: str, resolve=None) -> str:
     """Raise IngestError unless url is http(s) on port 80/443 and every address it resolves to is public."""
+    return (await _checked(url, resolve))[0]
+
+
+async def _checked(url: str, resolve=None) -> tuple[str, list[str]]:
+    """(url, ips): check_public_url, plus the checked addresses to connect to (so DNS can't change them
+    after), IPv4 first: many servers and containers have no IPv6 route."""
     parts = urlsplit(url.strip())
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise IngestError("Use a full web address starting with https://")
@@ -203,7 +209,14 @@ async def check_public_url(url: str, resolve=None) -> str:
         raise IngestError(f"Could not find the website {host}.") from None
     if not ips or not all(_is_public(ip) for ip in ips):
         raise IngestError("That address is not a public website, so SkyMind won't fetch it.")
-    return parts.geturl()
+    return parts.geturl(), sorted((ip.strip("[]") for ip in ips), key=lambda ip: ":" in ip)
+
+
+def _pinned(url: str, ip: str) -> str:
+    """url with its host replaced by the checked ip (the Host header and TLS name keep the real host)."""
+    parts = urlsplit(url)
+    host = f"[{ip}]" if ":" in ip else ip
+    return parts._replace(netloc=host + (f":{parts.port}" if parts.port else "")).geturl()
 
 
 def _looks_like_ip(host: str) -> bool:
@@ -225,35 +238,60 @@ async def fetch_url(url: str, client: httpx.AsyncClient | None = None, resolve=N
     return page["title"], page["text"]
 
 
+REDIRECTS = (301, 302, 303, 307, 308)
+
+
+async def _get(client: httpx.AsyncClient, url: str, ips: list[str]) -> tuple[int, httpx.Headers, bytes, str | None]:
+    """GET url from one of its checked addresses: (status, headers, body, encoding); status is 200 or a redirect.
+
+    Connects to a checked address, not a fresh DNS answer (blocks DNS rebinding), trying the next one if an
+    address can't be reached. The Host header and the TLS server name (SNI, also used to verify the
+    certificate) stay the real host.
+    """
+    parts = urlsplit(url)
+    for i, ip in enumerate(ips):
+        try:
+            async with client.stream("GET", _pinned(url, ip),
+                                     headers={"Host": parts.netloc, "User-Agent": USER_AGENT,
+                                              "Accept": "text/html,text/plain,application/pdf"},
+                                     extensions={"sni_hostname": parts.hostname}, timeout=FETCH_TIMEOUT_S) as resp:
+                if resp.status_code in REDIRECTS and resp.headers.get("location"):
+                    return resp.status_code, resp.headers, b"", None
+                if resp.status_code != 200:
+                    raise IngestError(f"The website answered with error {resp.status_code}.")
+                ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                if ctype not in ("text/html", "application/xhtml+xml", "text/plain", "application/pdf"):
+                    raise IngestError("That page isn't a web page, text or PDF.")
+                body = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    body += chunk
+                    if len(body) > MAX_PAGE_BYTES:
+                        raise IngestError("That page is too large to import.")
+                return 200, resp.headers, bytes(body), resp.encoding
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            if i == len(ips) - 1:
+                raise  # no checked address could be reached
+
+
 async def fetch_page(url: str, client: httpx.AsyncClient | None = None, resolve=None) -> dict:
     """Like fetch_url, but returns {"url" (after redirects), "title", "text", "links"}."""
     own = client is None
     client = client or httpx.AsyncClient(timeout=FETCH_TIMEOUT_S, follow_redirects=False)
     try:
         for _ in range(MAX_REDIRECTS + 1):
-            url = await check_public_url(url, resolve)
+            url, ips = await _checked(url, resolve)
             try:
-                async with client.stream("GET", url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain,application/pdf"},
-                                         timeout=FETCH_TIMEOUT_S) as resp:
-                    if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("location"):
-                        url = urljoin(url, resp.headers["location"])
-                        continue
-                    if resp.status_code != 200:
-                        raise IngestError(f"The website answered with error {resp.status_code}.")
-                    ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
-                    if ctype not in ("text/html", "application/xhtml+xml", "text/plain", "application/pdf"):
-                        raise IngestError("That page isn't a web page, text or PDF.")
-                    body = bytearray()
-                    async for chunk in resp.aiter_bytes():
-                        body += chunk
-                        if len(body) > MAX_PAGE_BYTES:
-                            raise IngestError("That page is too large to import.")
+                status, headers, body, encoding = await _get(client, url, ips)
             except httpx.HTTPError:
                 raise IngestError("Could not download that page (it may be down or too slow).") from None
+            if status != 200:
+                url = urljoin(url, headers["location"])
+                continue
+            ctype = headers.get("content-type", "").split(";")[0].strip().lower()
             if ctype == "application/pdf":
                 name = urlsplit(url).path.rsplit("/", 1)[-1] or "document.pdf"
                 return {"url": url, "title": name, "text": _pdf(name, bytes(body)), "links": []}
-            text = body.decode(resp.encoding or "utf-8", errors="replace")
+            text = body.decode(encoding or "utf-8", errors="replace")
             if ctype == "text/plain":
                 return {"url": url, "title": url, "text": f"## {urlsplit(url).netloc}\n{_clean(text)}", "links": []}
             title, page_text, links = html_page(text, url)

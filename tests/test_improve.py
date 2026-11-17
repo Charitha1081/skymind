@@ -95,3 +95,19 @@ with TestClient(main.app) as c2:
     c2.portal.call(seed_check)
 print("sample refresh OK: old sample documents replaced on startup")
 print("ALL IMPROVE TESTS PASSED")
+
+# A fixed-phrase list breaks when a word lands in the middle: "I don't have the FEE details" missed
+# "don't have the details", so the refusal counted as an answer and the website lookup never ran.
+for refusal in ("I don't have the fee details for laptop loans in the documents I can see.",
+                "I don't have that information. Please contact UNT directly.",
+                "I don't have the exact prices in my documents.",
+                "I cannot find the late fee rates for laptops.",
+                "I don't see the opening hours for that building."):
+    assert improve.is_unanswered(refusal), f"refusal not recognised: {refusal}"
+# and a real answer must never be read as a refusal, or it would be sent to the website for nothing
+for answer in ("You don't have to pay a fee for regular books; there are no overdue fines.",
+               "You don't need a separate pass; transportation fees are included in tuition.",
+               "Laptops cost $5.00 per hour in fines, with a $100.00 maximum fine per item.",
+               "UNT has 14 colleges and schools, including the College of Science."):
+    assert not improve.is_unanswered(answer), f"real answer read as a refusal: {answer}"
+print("refusal wording OK: words inside the phrase no longer hide a refusal")

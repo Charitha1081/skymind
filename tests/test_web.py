@@ -163,3 +163,18 @@ with TestClient(main.app) as c:
     finally:
         main.orchestrator.bot_provider, main.app.state.http, providers.ANTHROPIC_API_KEY = real
 print("ALL WEBSITE TESTS PASSED")
+
+# A follow-up often names no subject. "How much do I pay after 5 days?" reached the website lookup with
+# no idea it was about the laptop asked about a moment earlier, so the answer could only ask which item.
+import web
+EARLIER = "Can I rent a laptop at UNT?"
+p = web._prompt("UNT", "unt.edu", EARLIER)
+assert EARLIER in p and "unstated or shortened subject" in p, "the earlier question must reach the prompt"
+assert EARLIER not in web._prompt("UNT", "unt.edu"), "no context, no extra sentence"
+# the same words after a different question are a different question, so they must not share a cached answer
+bare = web.cache_key("b1", "how much after 5 days?")
+with_ctx = web.cache_key("b1", "how much after 5 days?", EARLIER)
+other_ctx = web.cache_key("b1", "how much after 5 days?", "Can I borrow a camera?")
+assert bare != with_ctx != other_ctx and bare != other_ctx, "the context belongs in the cache key"
+assert web.cache_key("b1", "q", EARLIER) == web.cache_key("b1", "q", EARLIER), "same context, same key"
+print("follow-up context OK: the earlier question reaches the website lookup and its cache key")

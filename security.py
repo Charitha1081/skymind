@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 import auth
 import ingest
 import settings
-from runtime import state
+from runtime import log, state
 
 # Google's sign-in button needs its script, frame, style and endpoints (per Google's CSP guidance).
 
@@ -69,13 +69,18 @@ async def current_user(request: Request) -> dict | None:
     return json.loads(raw) if raw else None
 
 
-async def is_admin(request: Request) -> bool:
-    """Admin = the X-Admin-Token header, or a signed-in Google account listed in ADMIN_EMAILS."""
+_UNSET = object()
+
+
+async def is_admin(request: Request, user=_UNSET) -> bool:
+    """Admin = the X-Admin-Token header, or a signed-in Google account listed in ADMIN_EMAILS.
+    Pass user when the caller already looked it up (saves a Redis round trip)."""
     given = request.headers.get("x-admin-token", "")
     if given and hmac.compare_digest(given.encode(), str(state.admin_token).encode()):
         return True
     if settings.ADMIN_EMAILS:
-        user = await current_user(request)
+        if user is _UNSET:
+            user = await current_user(request)
         return bool(user and user["email"] in settings.ADMIN_EMAILS)
     return False
 
@@ -84,6 +89,27 @@ async def require_admin(request: Request) -> None:
     """Admin endpoints need the X-Admin-Token header (compared in constant time) or an admin Google account."""
     if not await is_admin(request):
         raise HTTPException(401, "Admin token required. Find it in the server window (SkyMind admin token: ...).")
+
+
+_forwarded_logged = False
+
+
+def client_ip(request: Request) -> str:
+    """The visitor's address for rate limits. With TRUSTED_PROXY_HOPS set, read X-Forwarded-For from the
+    right: the left part is whatever the visitor sent, so trusting it (e.g. uvicorn's --forwarded-allow-ips "*")
+    would let anyone pick a new address per request and skip every per-address limit."""
+    global _forwarded_logged
+    hops = settings.TRUSTED_PROXY_HOPS
+    forwarded = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    if hops > 0 and forwarded:
+        picked = forwarded[-min(hops, len(forwarded))]
+        if not _forwarded_logged:  # once per worker: shows whether TRUSTED_PROXY_HOPS matches this host's proxies
+            _forwarded_logged = True
+            log.warning("X-Forwarded-For has %d entries; TRUSTED_PROXY_HOPS=%d uses entry %d from the right (%s). "
+                        "If that is a proxy address rather than the visitor's, raise TRUSTED_PROXY_HOPS.",
+                        len(forwarded), hops, min(hops, len(forwarded)), picked)
+        return picked
+    return request.client.host if request.client else "unknown"
 
 
 def login_required_to_deploy() -> bool:
@@ -119,8 +145,7 @@ async def require_importer(request: Request) -> None:
     admin = await is_admin(request)
     if login_required_to_deploy() and not admin and not await current_user(request):
         raise HTTPException(401, "Sign in with Google to import documents.")
-    client_ip = request.client.host if request.client else "unknown"
-    if not admin and await rate_limited(f"import:{client_ip}", settings.IMPORT_LIMIT_PER_HOUR, window_s=3600):
+    if not admin and await rate_limited(f"import:{client_ip(request)}", settings.IMPORT_LIMIT_PER_HOUR, window_s=3600):
         raise HTTPException(429, "Too many imports from your address this hour. Please try again later.")
 
 

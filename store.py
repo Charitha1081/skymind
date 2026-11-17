@@ -10,6 +10,7 @@ import secrets
 import time
 
 from fastapi import HTTPException
+from redis.exceptions import WatchError
 
 import auth
 import embeddings
@@ -62,6 +63,29 @@ def sessions_key(bot_id: str) -> str:
     return f"sessioncost:{bot_id}"
 
 
+def month_cost_key(bot_id: str, when: float | None = None) -> str:
+    """This month's spending (UTC). Budgets are monthly, so the budget guard and hard stop read this one."""
+    return f"monthcost:{bot_id}:{time.strftime('%Y-%m', time.gmtime(when))}"
+
+
+def month_cost_keys(bot_id: str) -> list[str]:
+    """Every month key that can still exist (they expire after MONTH_COST_TTL): this month and last month."""
+    first_of_month = time.time() - (time.gmtime().tm_mday - 1) * 86400
+    return [month_cost_key(bot_id), month_cost_key(bot_id, first_of_month - 86400)]
+
+
+MONTH_COST_TTL = 40 * 24 * 3600  # long enough to outlive its month
+
+
+def add_month_cost(pipe, bot_id: str, usd: float) -> None:
+    pipe.incrbyfloat(month_cost_key(bot_id), usd)
+    pipe.expire(month_cost_key(bot_id), MONTH_COST_TTL)
+
+
+async def month_spent(bot_id: str) -> float:
+    return float(await state.redis.get(month_cost_key(bot_id)) or 0)
+
+
 # ---------- Bots ----------
 
 def slugify(name: str) -> str:
@@ -106,6 +130,32 @@ async def load_bot(bot_id: str) -> dict:
         bot["_vectors"] = json.loads(raw_vec) if raw_vec else None
     state.bot_cache[bot_id] = (now, bot)
     return bot
+
+
+async def update_bot(bot_id: str, change, watch: tuple[str, ...] = ()) -> dict:
+    """Change a stored bot without losing a concurrent edit: read, change, write back only if nobody wrote
+    in between (Redis WATCH/MULTI), else start again. change(stored, reader) edits stored in place and may
+    return {key: value} to write in the same transaction; reader(key) reads another watched key."""
+    key = bot_key(bot_id)
+    async with state.redis.pipeline(transaction=True) as pipe:
+        while True:
+            try:
+                await pipe.watch(key, *watch)
+                raw = await pipe.get(key)
+                if raw is None:
+                    raise HTTPException(404, "Bot not found")
+                stored = json.loads(raw)
+                extra = await change(stored, pipe.get) or {}
+                pipe.multi()
+                pipe.set(key, json.dumps(stored))
+                for k, v in extra.items():
+                    pipe.set(k, v)
+                await pipe.execute()
+                break
+            except WatchError:
+                continue  # someone else changed the bot meanwhile: redo the change on the new copy
+    state.bot_cache.pop(bot_id, None)
+    return stored
 
 
 async def all_bots() -> list[dict]:
@@ -320,6 +370,7 @@ async def record_stats(
     pipe.lpush(latency_key(bot_id), latency_ms)
     pipe.ltrim(latency_key(bot_id), 0, 999)  # keep the last 1000 requests
     pipe.zincrby(sessions_key(bot_id), actual, session_id)
+    add_month_cost(pipe, bot_id, actual)
     await pipe.execute()
     return actual
 

@@ -2310,9 +2310,9 @@ async function refresh(once) {
       var strongPct = s.requests ? 100 - cheap : 0;
       tr.append(mini(s.requests ? cheap + "% cheap" : "no traffic yet", bar([["sky", cheap], ["zenith", strongPct]])));
 
-      var used = b.llm_budget_usd > 0 ? (s.actual_cost_usd / b.llm_budget_usd) * 100 : 100;
+      var used = b.llm_budget_usd > 0 ? (b.month_cost_usd / b.llm_budget_usd) * 100 : 100;  // budgets are monthly
       var cls = used >= 100 ? "over" : (used >= 85 ? "near" : "ok");
-      tr.append(mini(money(s.actual_cost_usd) + " / " + money(b.llm_budget_usd), bar([[cls, used]])));
+      tr.append(mini(money(b.month_cost_usd) + " / " + money(b.llm_budget_usd) + " this month", bar([[cls, used]])));
 
       tr.append(cell(s.saved_percent + "%", "num good"));
       var qd = b.quality || { helpful: 0, not_helpful: 0, gaps: 0 }, qr = qd.helpful + qd.not_helpful;

@@ -1,5 +1,4 @@
 """HTTP endpoints for bots: deploy, look up, usage, who can use it, website lookup, delete."""
-import json
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -10,9 +9,9 @@ import ingest
 import settings
 import web
 from runtime import state
-from security import current_user, is_admin, is_owner, login_required_to_deploy, rate_limited, require_admin, require_owner
+from security import client_ip, current_user, is_admin, is_owner, login_required_to_deploy, rate_limited, require_admin, require_owner
 from store import (BOTS_SET, _resolve_quiet, all_bots, bot_key, bot_stats, create_bot, latency_key, load_bot, public_info,
-                   quality_counts, sessions_key, stats_key, vectors_key)
+                   month_cost_keys, month_spent, quality_counts, sessions_key, stats_key, update_bot, vectors_key)
 
 api = APIRouter(tags=["Bots"])
 
@@ -41,9 +40,8 @@ async def deploy_bot(
     admin = await is_admin(request)
     if login_required_to_deploy() and not user and not admin:
         raise HTTPException(401, "Sign in with Google to deploy a bot.")
-    client_ip = request.client.host if request.client else "unknown"
     # Admins (and evaluate.py / loadtest.py, which use the admin token) are not limited.
-    if not admin and await rate_limited(f"deploy:{client_ip}", settings.DEPLOY_LIMIT_PER_IP, window_s=3600):
+    if not admin and await rate_limited(f"deploy:{client_ip(request)}", settings.DEPLOY_LIMIT_PER_IP, window_s=3600):
         raise HTTPException(429, "Too many bots deployed from your address this hour. Please try again later.")
     return await create_bot(body, owner_email=user["email"] if user else "")
 
@@ -72,6 +70,7 @@ async def bot_usage(bot_id: str, request: Request):
     if not (await is_owner(request, bot) or await is_admin(request)):
         raise HTTPException(403, "Only the company that deployed this bot can see its usage.")
     stats, _ = await bot_stats(bot_id)
+    month = await month_spent(bot_id)
     return {
         "id": bot_id,
         "name": bot["name"],
@@ -80,8 +79,9 @@ async def bot_usage(bot_id: str, request: Request):
         "latency": stats["latency"],
         "actual_cost_usd": stats["actual_cost_usd"],
         "saved_percent": stats["saved_percent"],
+        "month_cost_usd": round(month, 6),  # what the monthly budget and its guard are measured against
         "llm_budget_usd": round(bot["llm_budget"], 2),
-        "budget_guard": stats["actual_cost_usd"] >= bot["llm_budget"],
+        "budget_guard": month >= bot["llm_budget"],
         "access": bot.get("access") or {"mode": "public", "allowed_domains": [], "allowed_emails": []},
         "quality": await quality_counts(bot_id),
     }
@@ -99,11 +99,9 @@ async def update_access(bot_id: str, request: Request, body: dict = Body(...)):
         raise HTTPException(422, str(err))
     if access["mode"] == "google" and not auth.google_enabled():
         raise HTTPException(422, "Google sign-in is not set up on this server, so the bot can only be public.")
-    raw = await state.redis.get(bot_key(bot_id))
-    stored = json.loads(raw)
-    stored["access"] = access
-    await state.redis.set(bot_key(bot_id), json.dumps(stored))
-    state.bot_cache.pop(bot_id, None)
+    async def change(stored, _read):
+        stored["access"] = access
+    await update_bot(bot_id, change)
     return {"id": bot_id, "access": access}
 
 
@@ -123,11 +121,10 @@ async def update_web(bot_id: str, req: WebSettings, request: Request):
             await ingest.check_public_url(website, resolve=lambda h: _resolve_quiet(h))
     except (ValueError, ingest.IngestError) as err:
         raise HTTPException(422, str(err))
-    stored = json.loads(await state.redis.get(bot_key(bot_id)))
-    stored["website"] = website
-    stored["web_lookup"] = bool(website) and req.enabled
-    await state.redis.set(bot_key(bot_id), json.dumps(stored))
-    state.bot_cache.pop(bot_id, None)
+    async def change(stored, _read):
+        stored["website"] = website
+        stored["web_lookup"] = bool(website) and req.enabled
+    stored = await update_bot(bot_id, change)
     return {"website": website, "web_lookup": stored["web_lookup"]}
 
 
@@ -138,7 +135,8 @@ async def delete_bot(bot_id: str, request: Request):
     if not (await is_owner(request, bot) or await is_admin(request)):
         raise HTTPException(401, "Only the company that deployed this bot, or a SkyMind admin, can delete it.")
     r = state.redis
-    keys = [bot_key(bot_id), vectors_key(bot_id), stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id)] + improve.bot_keys(bot_id)
+    keys = ([bot_key(bot_id), vectors_key(bot_id), stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id)]
+            + improve.bot_keys(bot_id) + month_cost_keys(bot_id))
     for pattern in (f"chat:{bot_id}:*", f"answer:{bot_id}:*", f"rated:{bot_id}:*"):
         async for key in r.scan_iter(match=pattern):
             keys.append(key)

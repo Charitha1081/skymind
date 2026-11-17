@@ -111,3 +111,53 @@ with TestClient(main.app) as c:
         main.orchestrator.bot_provider, providers.call, providers.stream = real
         providers.ANTHROPIC_API_KEY = ""
 print("ALL ORCHESTRATOR TESTS PASSED")
+
+# 7. the model is told which other topics exist, so it can say what it helps with
+#    (it used to describe its whole scope from the two sections search happened to return)
+bot = {"company": "UNT", "chunks": [{"title": t, "text": "..."} for t in
+       ["About UNT", "Housing", "Meal plans", "Parking permits", "AI Expo by SSAI"]]}
+p = main.orchestrator.build_system_prompt(bot, [{"title": "AI Expo by SSAI", "text": "The expo is on Nov 16."}])
+assert "Housing; Meal plans; Parking permits" in p, "other topics must be listed"
+assert "AI Expo by SSAI;" not in p, "the section already shown must not repeat in the list"
+assert "NOT been shown" in p and "from a topic name alone" in p, "must forbid answering from a title"
+assert "also cover these topics" not in main.orchestrator.build_system_prompt({"company": "X"}, []), \
+    "no topic list when the bot has no other sections"
+print("topic list OK: the bot can say what it covers without being shown the text")
+
+# 8. only the sections the answer was really written from are named underneath it.
+#    Search returns three sections for a housing question, one of which is the health centre; the
+#    answer never mentions it, and because the chips are clickable, naming it is a visible false
+#    citation. (Real sections and a real retrieval, not a hand-made example.)
+import knowledge
+unt = next(e for e in examples.EXAMPLES if "North Texas" in e.get("company", ""))
+ch = knowledge.make_chunks(unt["knowledge"])
+got = knowledge.retrieve(knowledge.build_index(ch), ch, "What are the housing options available at unt", k=3, method="bm25")
+# Compared as a set: the two housing sections score within 0.15 of the health centre, so their
+# order shifts whenever the document set grows. What matters is which three come back.
+assert set(s["title"] for s in got) == {"Housing", "Housing contact",
+                                        "Student Health and Wellness Center (doctor visits)"}, got
+housing_answer = ("UNT has 15 residence halls. Living Learning Communities are also available. To apply, use the "
+                  "Housing Portal linked from housing.unt.edu; payments go through your myUNT account. Housing and "
+                  "Residence Life is in the UNT Welcome Center, 1417 Maple St, Denton, TX 76201, housinginfo@unt.edu.")
+named = [s["title"] for s in main.orchestrator.shown_sources({"sources": got}, housing_answer)]
+assert sorted(named) == ["Housing", "Housing contact"], f"the health centre must not be cited: {named}"
+
+# 8b. an answer that says it has nothing cites nothing. With 34 sections, an off-topic question
+#     still scrapes a weak match ("return policy for hiking boots" reaches the Wi-Fi section,
+#     which mentions an acceptable use policy), and a chip under a refusal is a citation for an
+#     answer that was never written from it.
+off = knowledge.retrieve(knowledge.build_index(ch), ch, "What is your return policy for hiking boots?",
+                         k=3, method="bm25")
+assert off, "this question is only interesting while search still returns something"
+refusal = ("I don't have that in the documents I have for the University of North Texas. "
+           "For anything I don't cover, please check unt.edu.")
+assert main.orchestrator.shown_sources({"sources": off}, refusal) == [], "a refusal must show no sources"
+print("sources OK: only sections the answer used, and none at all behind a refusal")
+
+# a section quoted for a single fact is still kept, and one source is never filtered away
+one_line = got[0]["text"].split(". ")[0]
+assert got[0]["title"] in [s["title"] for s in main.orchestrator.shown_sources({"sources": got}, one_line)]
+assert len(main.orchestrator.shown_sources({"sources": got[:1]}, "unrelated text")) == 1
+# after a second look the wide search saw many loose sections: only the best one is named
+assert len(main.orchestrator.shown_sources({"sources": got, "second_look": True}, housing_answer)) == 1
+print("sources OK:", " + ".join(named), "(health centre dropped)")
