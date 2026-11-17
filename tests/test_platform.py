@@ -5,8 +5,15 @@ import fakeredis
 from fastapi.testclient import TestClient
 
 import examples
+import ingest
 import main
 import pages
+
+# Tests run offline: the UNT sample bot has website lookup on, and a real fetch of unt.edu would answer
+# the off-topic question below (and make the result depend on the network and on unt.edu's pages).
+async def offline_fetch(url, client=None, resolve=None):
+    raise ingest.IngestError("tests run offline")
+ingest.fetch_page = offline_fetch
 
 main.redis.from_url = lambda *a, **k: fakeredis.FakeAsyncRedis(decode_responses=True)
 
