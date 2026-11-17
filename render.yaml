@@ -26,9 +26,11 @@ services:
       - key: FORWARDED_ALLOW_IPS
         value: "*"                   # trust Render's proxy for https (X-Forwarded-Proto), so sign-in cookies are Secure
       - key: TRUSTED_PROXY_HOPS
-        value: "1"                   # rate limits use the address Render's proxy appended, not one the visitor wrote
+        value: "1"                   # proxies that append to X-Forwarded-For; rate limits use the address they wrote,
+                                     # not one the visitor wrote. Check the "X-Forwarded-For has N entries" line in
+                                     # the logs after the first request and raise this if it names a proxy address.
       - key: CHAT_LIMIT_PER_IP
-        value: "30"                  # messages per minute per visitor
+        value: "120"                 # messages per minute per address (one address can be a whole campus behind NAT)
       - key: CHAT_LIMIT_PER_SESSION
         value: "20"
       - key: DEPLOY_LIMIT_PER_IP

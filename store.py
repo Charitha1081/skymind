@@ -63,9 +63,15 @@ def sessions_key(bot_id: str) -> str:
     return f"sessioncost:{bot_id}"
 
 
-def month_cost_key(bot_id: str) -> str:
+def month_cost_key(bot_id: str, when: float | None = None) -> str:
     """This month's spending (UTC). Budgets are monthly, so the budget guard and hard stop read this one."""
-    return f"monthcost:{bot_id}:{time.strftime('%Y-%m', time.gmtime())}"
+    return f"monthcost:{bot_id}:{time.strftime('%Y-%m', time.gmtime(when))}"
+
+
+def month_cost_keys(bot_id: str) -> list[str]:
+    """Every month key that can still exist (they expire after MONTH_COST_TTL): this month and last month."""
+    first_of_month = time.time() - (time.gmtime().tm_mday - 1) * 86400
+    return [month_cost_key(bot_id), month_cost_key(bot_id, first_of_month - 86400)]
 
 
 MONTH_COST_TTL = 40 * 24 * 3600  # long enough to outlive its month

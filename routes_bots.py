@@ -11,7 +11,7 @@ import web
 from runtime import state
 from security import client_ip, current_user, is_admin, is_owner, login_required_to_deploy, rate_limited, require_admin, require_owner
 from store import (BOTS_SET, _resolve_quiet, all_bots, bot_key, bot_stats, create_bot, latency_key, load_bot, public_info,
-                   month_spent, quality_counts, sessions_key, stats_key, update_bot, vectors_key)
+                   month_cost_keys, month_spent, quality_counts, sessions_key, stats_key, update_bot, vectors_key)
 
 api = APIRouter(tags=["Bots"])
 
@@ -70,6 +70,7 @@ async def bot_usage(bot_id: str, request: Request):
     if not (await is_owner(request, bot) or await is_admin(request)):
         raise HTTPException(403, "Only the company that deployed this bot can see its usage.")
     stats, _ = await bot_stats(bot_id)
+    month = await month_spent(bot_id)
     return {
         "id": bot_id,
         "name": bot["name"],
@@ -78,8 +79,9 @@ async def bot_usage(bot_id: str, request: Request):
         "latency": stats["latency"],
         "actual_cost_usd": stats["actual_cost_usd"],
         "saved_percent": stats["saved_percent"],
+        "month_cost_usd": round(month, 6),  # what the monthly budget and its guard are measured against
         "llm_budget_usd": round(bot["llm_budget"], 2),
-        "budget_guard": await month_spent(bot_id) >= bot["llm_budget"],
+        "budget_guard": month >= bot["llm_budget"],
         "access": bot.get("access") or {"mode": "public", "allowed_domains": [], "allowed_emails": []},
         "quality": await quality_counts(bot_id),
     }
@@ -133,8 +135,9 @@ async def delete_bot(bot_id: str, request: Request):
     if not (await is_owner(request, bot) or await is_admin(request)):
         raise HTTPException(401, "Only the company that deployed this bot, or a SkyMind admin, can delete it.")
     r = state.redis
-    keys = [bot_key(bot_id), vectors_key(bot_id), stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id)] + improve.bot_keys(bot_id)
-    for pattern in (f"chat:{bot_id}:*", f"answer:{bot_id}:*", f"rated:{bot_id}:*", f"monthcost:{bot_id}:*"):
+    keys = ([bot_key(bot_id), vectors_key(bot_id), stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id)]
+            + improve.bot_keys(bot_id) + month_cost_keys(bot_id))
+    for pattern in (f"chat:{bot_id}:*", f"answer:{bot_id}:*", f"rated:{bot_id}:*"):
         async for key in r.scan_iter(match=pattern):
             keys.append(key)
     await r.delete(*keys)

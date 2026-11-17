@@ -102,7 +102,7 @@ async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
     # is chosen by the browser, so only the per-address limit stops a script that sends a new id each time.
     # Admins (evaluate.py and loadtest.py use the admin token) are not limited by address.
     if await rate_limited(f"s:{bot_id}:{req.session_id}", settings.CHAT_LIMIT_PER_SESSION) or (
-        not await is_admin(request) and await rate_limited(f"ip:{client_ip(request)}", settings.CHAT_LIMIT_PER_IP)
+        not await is_admin(request, user) and await rate_limited(f"ip:{client_ip(request)}", settings.CHAT_LIMIT_PER_IP)
     ):
         raise HTTPException(429, "Too many messages. Please wait a minute and try again.")
     spent = await month_spent(bot_id)  # this calendar month only: the budget is monthly
@@ -236,7 +236,7 @@ async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sour
 
     # Reliability: retry a busy/failed call once, then fall back from the strong to the cheap model.
     plan = [tier, tier] + (["cheap"] if tier == "strong" else [])
-    skip_strong = False
+    skip_strong = False  # the strong model refused (unknown model, no access): go straight to the cheap one
     for attempt, use_tier in enumerate(plan):
         if skip_strong and use_tier == "strong":
             continue
@@ -263,6 +263,7 @@ async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sour
             "model": result["model"],
             "tier": use_tier,
             "fallback": use_tier != tier,
+            "fallback_why": "unavailable" if skip_strong else "busy",
             "input_tokens": result["input_tokens"] or est_input,
             "output_tokens": result["output_tokens"] or router.estimate_tokens(text),
         }
@@ -427,7 +428,10 @@ async def finish_chat(ctx: dict, result: dict) -> ChatResponse:
     tier, reason = ctx["tier"], ctx["reason"]
     if result.get("fallback"):
         tier = result["tier"]
-        reason += "; the strong model was busy, so the cheap model answered"
+        if result.get("fallback_why") == "unavailable":
+            reason += "; the strong model refused the request (check STRONG_MODEL and account access), so the cheap model answered"
+        else:
+            reason += "; the strong model was busy, so the cheap model answered"
     total = await save_turn(bot_id, req.session_id, req.message, result["text"]) if ctx["remembers"] else 0
     latency_ms = round((time.perf_counter() - ctx["start"]) * 1000, 1)
     cost = await record_stats(

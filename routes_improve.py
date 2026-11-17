@@ -1,6 +1,7 @@
 """HTTP endpoints for improving a bot: unanswered questions, Suggest fix, adding documents, ratings, imports."""
 import json
 import time
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
@@ -97,13 +98,13 @@ async def suggest_fix(bot_id: str, req: SuggestFix, request: Request):
     # and normalised, and the website lookup and the bot's "see our site" line use it).
     if not bot.get("website"):
         try:
-            site = web.normalise_website(req.url)
+            parts = urlsplit(web.normalise_website(req.url))
+            site = f"{parts.scheme}://{parts.netloc}" if parts.netloc else ""  # the site, not the page fixed from
         except ValueError:
             site = ""
         if site:
             async def remember(stored, _read):
-                stored.setdefault("website", "")
-                if not stored["website"]:
+                if not stored.get("website"):
                     stored["website"] = site
             await update_bot(bot_id, remember)
 
@@ -133,6 +134,10 @@ async def update_knowledge(bot_id: str, req: KnowledgeUpdate, request: Request):
     new_chunks = knowledge.make_chunks(req.text)
     if not new_chunks:
         raise HTTPException(422, "Could not read any text to add.")
+    # Embed the new text before the transaction: the call is slow and paid, so it must not be repeated
+    # when a concurrent write makes the transaction start again.
+    new_vectors = await embed_or_fail(new_chunks) if bot.get("search") == "hybrid" else None
+
     async def change(stored, read):
         chunks = new_chunks if req.mode == "replace" else stored["chunks"] + new_chunks
         total = sum(len(c["text"]) for c in chunks)
@@ -141,12 +146,12 @@ async def update_knowledge(bot_id: str, req: KnowledgeUpdate, request: Request):
         stored["chunks"] = chunks
         if stored.get("search") != "hybrid":
             return None
-        # keep exactly one vector per chunk: if the stored vectors are missing or don't match the old
-        # chunks (evicted, never written), embed everything again rather than misalign them
         old = json.loads(await read(vectors_key(bot_id)) or "[]") if req.mode == "append" else []
-        if req.mode == "append" and len(old) == len(chunks) - len(new_chunks):
-            vectors = old + await embed_or_fail(new_chunks)
+        if new_vectors is not None and len(old) == len(chunks) - len(new_chunks):
+            vectors = old + new_vectors
         else:
+            # Keep exactly one vector per chunk: the stored vectors are missing or don't match the old
+            # chunks (evicted, never written), so embed everything rather than misalign them. Rare.
             vectors = await embed_or_fail(chunks)
         return {vectors_key(bot_id): json.dumps(vectors)}
     stored = await update_bot(bot_id, change, watch=(vectors_key(bot_id),))

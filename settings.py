@@ -38,7 +38,9 @@ REQUIRE_LOGIN_TO_DEPLOY = os.getenv("REQUIRE_LOGIN_TO_DEPLOY", "auto").lower()  
 MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", "1000000"))  # reject requests larger than ~1 MB
 SESSION_ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
 CHAT_LIMIT_PER_SESSION = int(os.getenv("CHAT_LIMIT_PER_SESSION", "60"))  # messages per minute per conversation (0 = off)
-CHAT_LIMIT_PER_IP = int(os.getenv("CHAT_LIMIT_PER_IP", "60"))  # messages per minute per client address (0 = off; admins exempt)
+# Messages per minute per client address (0 = off; admins exempt). One address can be a whole campus or office
+# behind NAT, so this is set to stop one script flooding a bot, not to pace a person (CHAT_LIMIT_PER_SESSION does that).
+CHAT_LIMIT_PER_IP = int(os.getenv("CHAT_LIMIT_PER_IP", "300"))
 # Behind a proxy (Render): how many proxies append to X-Forwarded-For. The visitor is that many hops from the
 # right; anything further left was written by the visitor and can be faked. 0 = use the connection address.
 TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "0"))

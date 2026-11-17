@@ -81,7 +81,7 @@ with TestClient(main.app) as c:
     found = {f["question"] for f in rep["found"]}
     assert {"Do you sell kayaks?", "Can I rent a tent?", "Where do I park?"} <= found, rep
     assert "Who is your CEO?" in rep["not_found"] and rep["used_ai"] is False
-    assert c.get(f"/bots/{bid}/improve", headers=KEY).json()["website"] == "https://www.acme.example/"
+    assert c.get(f"/bots/{bid}/improve", headers=KEY).json()["website"] == "https://www.acme.example"  # the site, not the page
     print("draft OK (offline):", len(rep["pages"]), "pages read; found", sorted(found), "; not found", rep["not_found"])
 
     # 5. approve: add the draft, mark the found questions fixed, and the bot now answers
