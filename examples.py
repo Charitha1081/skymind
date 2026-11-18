@@ -1,8 +1,10 @@
 """Sample customers for demos. The deploy page can load these with one click.
 
-Fernleaf Software and Acme Outdoor Gear are made-up companies. Fernleaf is the sample shown on the
-live site (an assistant and a code reviewer); Acme is a second, smaller company used by the tests to
-prove that one company's documents and memory never reach another's.
+Fernleaf Software, Acme Outdoor Gear and Kestrel Logistics are made-up companies. Fernleaf is the
+sample shown on the live site (an assistant and a code reviewer). Acme is a second, smaller company used
+by the tests to prove that one company's documents and memory never reach another's. Kestrel is a
+second evaluation corpus of a different kind (a long employee handbook full of rules and exceptions),
+so search and answer quality are not judged on one document set alone. Neither is deployed.
 """
 import standards
 
@@ -167,6 +169,98 @@ Most customers are 25 to 45, buy online, and camp a few weekends a year. A growi
 Acme has two stores (Denver and Austin), a small support team, and no mobile app. Any new idea must work with the existing website and stores.
 """
 
+KESTREL_KNOWLEDGE = """
+## About this handbook
+This is the employee handbook of Kestrel Logistics, a made-up freight and warehousing company used to test SkyMind on long policy documents. It applies to all employees in the United States unless a section says otherwise. If a local law gives you more than this handbook does, the law applies. Questions about anything not covered here go to People Operations.
+
+## About Kestrel Logistics
+Kestrel Logistics moves and stores freight for retailers and manufacturers. It was founded in 2009 in Columbus, Ohio, where its head office still is, and it runs six warehouses (Columbus, Indianapolis, Memphis, Dallas, Reno and Allentown) and a fleet of 420 trucks. Kestrel has about 2,300 employees: roughly 1,500 in warehouses, 500 drivers and 300 in offices.
+
+## Employment types
+Kestrel has four employment types. Full-time employees work 40 hours a week. Part-time employees work fewer than 30 hours a week. Seasonal employees are hired for the October to January peak and their contract ends on January 31. Interns work up to 12 weeks in summer. Benefits in this handbook apply to full-time employees unless the section says otherwise; part-time employees who work at least 20 hours a week get paid time off at half the full-time rate.
+
+## Probation period
+Every new employee starts with a 90-day probation period. During probation your manager meets you every 30 days to review your progress. Probation can be extended once by up to 60 more days. Paid time off builds up during probation, but you cannot take vacation days until probation ends, except for sick leave and bereavement leave.
+
+## Working hours and shifts
+Office hours are 9 AM to 5:30 PM, Monday to Friday, with a 30-minute unpaid lunch. Warehouses run three shifts: first shift 6 AM to 2:30 PM, second shift 2 PM to 10:30 PM, and third shift 10 PM to 6:30 AM. Second shift is paid an extra $1.50 an hour and third shift an extra $2.50 an hour. Shift swaps must be approved by the shift supervisor at least 24 hours in advance.
+
+## Overtime
+Hourly employees are paid 1.5 times their normal rate for hours over 40 in a week, and 2 times their normal rate for hours worked on a public holiday. Overtime must be approved by a supervisor before it is worked, except in an emergency. During the October to January peak, warehouse employees may be scheduled for up to 10 hours of overtime a week with 7 days' notice.
+
+## Pay and payroll
+Employees are paid every two weeks, on Friday, by direct deposit. Pay stubs are in the Kestrel Hub app under Pay. If a payday falls on a public holiday, you are paid on the working day before. Report a pay error to payroll@kestrel.example within 30 days; corrections are paid in the next pay run, or within 3 working days if the error is more than $200.
+
+## Paid time off
+Full-time employees earn paid time off (PTO) every pay period. In years 1 and 2 you earn 15 days a year; in years 3 to 5, 20 days; after 5 years, 25 days. You can carry over up to 5 unused days into the next year; anything above 5 days is lost on December 31. Request PTO in Kestrel Hub at least 2 weeks ahead for 3 or more days in a row. Warehouse PTO between November 15 and January 5 needs director approval.
+
+## Sick leave
+Sick leave is separate from PTO. Full-time employees get 10 sick days a year and part-time employees 5, available from the first day of work. Sick days do not carry over. You need a doctor's note only for more than 3 sick days in a row. Sick leave can also be used to care for a sick child, partner or parent.
+
+## Public holidays
+Kestrel observes 10 paid public holidays: New Year's Day, Martin Luther King Jr. Day, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, the day after Thanksgiving, Christmas Eve and Christmas Day. Warehouse employees who work on a public holiday are paid double time and get another day off within 60 days.
+
+## Parental leave
+Employees with at least 6 months of service get 16 weeks of fully paid parental leave after the birth, adoption or foster placement of a child. It can be taken in one block or in up to three blocks within 12 months of the child's arrival. Tell your manager and People Operations at least 30 days before the leave starts when you can. You can return to the same or an equivalent job.
+
+## Bereavement leave
+After the death of a close family member (partner, child, parent, sibling or grandparent) you get 5 paid days off. For other relatives and close friends you get 2 paid days. Bereavement leave does not need advance notice and does not use your PTO or sick leave.
+
+## Jury duty and voting
+Kestrel pays your normal pay for up to 10 days of jury duty a year; show your jury summons to your manager. Employees get up to 2 hours of paid time off to vote in any public election if their shift does not leave 3 free hours while polls are open.
+
+## Health insurance
+Full-time employees can join the Kestrel health plan from the first day of the month after they start. Kestrel pays 80 percent of the premium for employees and 60 percent for family members. There are two plans: Standard, with a $1,500 deductible, and Plus, with a $500 deductible. Open enrollment runs every year from November 1 to November 15.
+
+## Dental and vision
+Dental and vision cover start at the same time as health insurance. Kestrel pays 100 percent of the dental premium for employees. Vision cover includes one eye exam a year and up to $150 a year for glasses or contact lenses.
+
+## Retirement plan (401k)
+All employees aged 21 or older can join the 401(k) plan after 30 days. Kestrel matches 100 percent of the first 4 percent of pay you put in. Your own contributions are always yours; the company match vests fully after 2 years of service.
+
+## Employee assistance program
+The employee assistance program (EAP) gives free, confidential counseling: up to 6 sessions per issue each year, for employees and their household. It also helps with legal and money questions. Call 1-800-555-0142 any time, day or night. Your manager is not told that you used it.
+
+## Remote and hybrid work
+Office employees can work from home up to 2 days a week with their manager's agreement. Warehouse and driver roles are on site. Remote days must be in the United States. Kestrel gives hybrid employees a one-time $300 allowance for a desk or chair, and pays $40 a month toward home internet.
+
+## Travel and expenses
+Book work travel through the Kestrel travel portal at least 14 days ahead when you can. Flights under 6 hours are economy class. The daily meal allowance is $60 within the United States. Mileage in your own car is paid at $0.67 a mile. Submit expenses with receipts in Kestrel Hub within 30 days of the trip; expenses submitted later need your director's approval.
+
+## Company vehicles and drivers
+Drivers must hold a valid commercial driver's license (CDL) and pass a medical exam every 2 years. Drivers may drive no more than 11 hours in a 14-hour work period and must take a 30-minute break after 8 hours of driving. Report any accident, however small, to dispatch right away and file the incident form in Kestrel Hub within 24 hours.
+
+## Workplace safety
+Steel-toe boots and a high-visibility vest are required on every warehouse floor. Forklifts may be driven only by employees with a current Kestrel forklift certificate, renewed every 3 years. Report injuries and near misses to your supervisor the same day. Stopping work you believe is unsafe is always allowed, and you will not be punished for it.
+
+## Drug and alcohol policy
+Being under the influence of alcohol or illegal drugs at work is not allowed. Drivers and forklift operators are tested before hire, at random, and after any accident. Employees who ask for help with substance use before a test or an incident can use the EAP and take unpaid leave to get treatment without losing their job.
+
+## Code of conduct
+Treat colleagues, customers and drivers from other companies with respect. Gifts from suppliers or customers worth more than $75 must be declined or reported to your manager. Conflicts of interest, such as a second job with a competitor or a family member at a supplier, must be disclosed in Kestrel Hub.
+
+## Harassment and discrimination
+Kestrel does not tolerate harassment or discrimination of any kind. Report it to your manager, to People Operations, or anonymously through the Speak Up line at 1-800-555-0177 or speakup.kestrel.example. Every report is investigated, usually within 10 working days, and retaliation against anyone who reports in good faith is a firing offense.
+
+## Performance reviews
+Performance reviews happen twice a year, in March and September. Your manager rates you on a 4-point scale: Below, Meets, Exceeds and Outstanding. Pay raises are decided in the March review and take effect on April 1. An employee rated Below gets a written improvement plan of 60 days.
+
+## Training and tuition
+Every employee gets 24 paid hours of training a year. Full-time employees with at least 1 year of service can get up to $5,250 a year in tuition assistance for courses related to their job. If you leave Kestrel within 12 months of receiving tuition assistance, you must pay back half of it.
+
+## Referral bonus
+Refer a friend for an open job and get a bonus when they have worked at Kestrel for 90 days: $500 for warehouse and office roles and $1,500 for drivers. Referrals are submitted in Kestrel Hub before the candidate applies.
+
+## Equipment and IT
+Office employees get a laptop; warehouse leads get a rugged handheld scanner. Report a lost or stolen device to the IT service desk within 24 hours at it@kestrel.example or extension 4357. Passwords must be at least 14 characters and are never shared, including with IT.
+
+## Leaving Kestrel
+Please give 2 weeks' notice, or 4 weeks if you are a manager. Unused PTO is paid out in your final paycheck; unused sick days are not. Return all equipment, badges and fuel cards on your last day. You can ask People Operations for an exit interview.
+
+## People Operations contact
+People Operations is open Monday to Friday, 8 AM to 6 PM Eastern Time. Email people@kestrel.example, call extension 2200, or open a request in Kestrel Hub. Every warehouse also has an on-site People partner on first and second shift.
+"""
+
 EXAMPLES = [
     {
         "key": "fernleaf",
@@ -213,6 +307,17 @@ EXAMPLES = [
         "model": "strong",
         "monthly_budget": "$100",
         "knowledge": (ACME_KNOWLEDGE.strip() + "\n\n" + ACME_GOALS.strip()),
+    },
+    {
+        "key": "kestrel",
+        "bot_name": "Kestrel HR Helper",
+        "company": "Kestrel Logistics",
+        "expected_concurrent_users": 300,
+        "latency_target_p95": "4s",
+        "memory": "window",
+        "model": "auto",
+        "monthly_budget": "$400",
+        "knowledge": KESTREL_KNOWLEDGE.strip(),
     },
 ]
 

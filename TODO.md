@@ -27,11 +27,12 @@ The code for all of this exists; it has never been run with real API keys.
   - Remove the "All figures use placeholder assumptions" note (near line 190) once the traffic assumptions are measured too (`loadtest.py`).
 - [ ] **3. Raise the CI recall floor to match.**
   - CI exists now: `.github/workflows/tests.yml` runs every test suite, then `evaluate_search.py --min-recall 0.90`.
-  - Today's recall@3 is 91.5%, so the floor is 0.90. Each time search improves, raise the floor to just under the new number.
+  - Recall@3 (BM25, all corpora) is 89.4% since the harder Kestrel handbook was added, so the floor is 0.88. Each time search improves, raise the floor to just under the new number.
 
 ## Phase 2: Make the evaluation mean something
 
-- [ ] **4. A second corpus** (the highest-value item). Every number today could be an artifact of one document set.
+- [x] **4. A second corpus** (the highest-value item). Every number today could be an artifact of one document set.
+  - Done: Kestrel Logistics, a 30-section employee handbook (`examples.py`, not deployed), with 49 tuning questions in `questions.yaml`. BM25 recall@3 is 97% on Fernleaf but 87% on Kestrel. Next: measure hybrid and Claude answers on it.
   - Pick a document set that is different in kind: an HR policy handbook, a clinic FAQ, or an API reference. Make it 30+ sections.
   - Add it to `examples.py` as a third company (not deployed, like Acme).
 - [ ] **5. Question sets for the second corpus, with the same held-out discipline.**

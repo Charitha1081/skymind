@@ -57,7 +57,7 @@ Prices are list prices from November 2026; check each provider's page. You can c
 
 ## Evaluation
 
-`questions.yaml` holds 67 questions about the two sample companies (Fernleaf Software and Acme Outdoor Gear, both made up): 59 with the facts a correct answer must contain and 8 whose answer is not in the documents (the bot has to say so). Some use different words from the documents ("Can I use it on my phone?" for the mobile apps) to test meaning search. `evaluate.py` grades three things:
+`questions.yaml` holds 116 questions about three made-up companies, written as two corpora of different kinds: a product FAQ (Fernleaf Software, plus the small Acme Outdoor Gear set) and a long employee handbook full of rules and exceptions (Kestrel Logistics). 104 have facts a correct answer must contain and 12 have no answer in the documents (the bot has to say so). Some use different words from the documents ("Can I use it on my phone?" for the mobile apps) to test meaning search. `evaluate.py` grades three things:
 
 - search: does each search method find the right section, and find nothing for off-topic questions?
 - routing: does the router send hard questions to the strong model?
@@ -71,21 +71,32 @@ docker compose run --rm evaluate answers --providers gemini --pace 5 --show   # 
 python evaluate_search.py                                   # search recall on every question set, offline
 ```
 
-### Measured results (November 2026, Fernleaf and Acme samples)
+### Measured results (November 2026)
 
-Search, 60 questions with a section to find and 7 that should find nothing:
+Search on the first 67 questions (Fernleaf and Acme): 60 with a section to find and 7 that should find nothing:
 
 | Method | Right section first | Right section in top 3 | Finds nothing when it should |
 |---|---|---|---|
 | keyword (IDF overlap) | 90% | 93% | 29% |
 | bm25 (default) | 88% | 92% | 71% |
-| hybrid (bm25 + embeddings) | 92% | 97% | 71% | | |
+| hybrid (bm25 + embeddings) | 92% | 97% | 71% |
 
 Hybrid finds the right section more often (97% vs 92% in the top 3) and refuses off-topic questions as well as BM25, so it is the default whenever GEMINI_API_KEY is set. The difference is 3 of 60 questions, and the similarity threshold (EMBED_MIN_SIM = 0.62, unchanged) was tuned on these same questions, so it still needs confirming on a held-out set.
 
 BM25 refuses off-topic questions far more often than keyword search. Its misses are mostly questions worded differently from the documents ("How can I talk to a person?" vs "Customer support", "money back" vs "refund"), which is what hybrid search and the second look are for.
 
-Routing: the router agrees with the easy/hard labels on 59 of 59 questions. Treat that as a sanity check, not a result: these questions were written by people who knew how the router works. The honest test is a held-out set written without looking at the code (see `TODO.md`).
+Search per corpus, BM25, all 116 questions (`python evaluate_search.py <bot>`):
+
+| Corpus | Kind | Right section in top 3 | Finds nothing when it should |
+|---|---|---|---|
+| Fernleaf | product FAQ | 38/39 = 97% | 3/4 |
+| Acme | small product FAQ | 16/20 = 80% | 3/4 |
+| Kestrel | long policy handbook | 39/45 = 87% | 3/4 |
+| **all** | | **93/104 = 89.4%** | **9/12** |
+
+The second corpus changed the picture: on one product FAQ, word search looked better than it is. On the handbook it misses questions that use different forms or words from the policy text: "How often are we *paid*?" against a section about "Pay", "grandmother" against "grandparent", "stressed" against "counseling", "shoes" against "steel-toe boots". Hybrid search on the handbook has not been measured yet (it needs GEMINI_API_KEY).
+
+Routing: the router agrees with the easy/hard labels on all 104 labelled questions. Treat that as a sanity check, not a result: these questions were written by people who knew how the router works. The honest test is a held-out set written without looking at the code (see `TODO.md`).
 
 ### Answers with real models (Claude, November 2026)
 

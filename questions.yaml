@@ -82,3 +82,56 @@
 - {bot: acme, level: easy, section: About Acme Outdoor Gear, q: "What are your products?", must: ["tent"]}
 - {bot: acme, level: easy, section: Returns and refunds, q: "How do I get my money back?", must: ["30|return"]}
 - {bot: acme, level: easy, section: Contact support, q: "How can I talk to a person?", must: ["555-0100|support@acme.example|chat"]}
+
+# ------------------------------------------------------------------ Kestrel HR Helper (second corpus: a long policy handbook)
+- {bot: kestrel, level: easy, section: About Kestrel Logistics, q: "Where is Kestrel's head office?", must: ["columbus"]}
+- {bot: kestrel, level: easy, section: About Kestrel Logistics, q: "How many warehouses does Kestrel run?", must: ["6|six"]}
+- {bot: kestrel, level: easy, section: Employment types, q: "When does a seasonal contract end?", must: ["january 31|jan 31|jan. 31"]}
+- {bot: kestrel, level: easy, section: Probation period, q: "How long is the probation period?", must: ["90"]}
+- {bot: kestrel, level: easy, section: Probation period, q: "Can I take vacation during probation?", must: ["cannot|can't|not|until probation ends"]}
+- {bot: kestrel, level: easy, section: Working hours and shifts, q: "What time does third shift start?", must: ["10 pm|10pm|10:00 pm"]}
+- {bot: kestrel, level: easy, section: Working hours and shifts, q: "How much extra is paid for second shift?", must: ["1.50"]}
+- {bot: kestrel, level: easy, section: Overtime, q: "What is the overtime rate?", must: ["1.5"]}
+- {bot: kestrel, level: easy, section: Pay and payroll, q: "How often are we paid?", must: ["two weeks|every 2 weeks|biweekly|bi-weekly"]}
+- {bot: kestrel, level: easy, section: Pay and payroll, q: "Where do I report a mistake in my pay?", must: ["payroll@kestrel.example"]}
+- {bot: kestrel, level: easy, section: Paid time off, q: "How many PTO days do I get in my first year?", must: ["15"]}
+- {bot: kestrel, level: easy, section: Paid time off, q: "How many unused PTO days can I carry over?", must: ["5|five"]}
+- {bot: kestrel, level: easy, section: Sick leave, q: "How many sick days do full-time employees get?", must: ["10"]}
+- {bot: kestrel, level: easy, section: Sick leave, q: "When do I need a doctor's note for sick leave?", must: ["3|three"]}
+- {bot: kestrel, level: easy, section: Public holidays, q: "How many paid public holidays are there?", must: ["10|ten"]}
+- {bot: kestrel, level: easy, section: Parental leave, q: "How long is parental leave?", must: ["16"]}
+- {bot: kestrel, level: easy, section: Bereavement leave, q: "How many days off do I get if my grandmother dies?", must: ["5|five"]}
+- {bot: kestrel, level: easy, section: Jury duty and voting, q: "Is jury duty paid?", must: ["10"]}
+- {bot: kestrel, level: easy, section: Health insurance, q: "When is open enrollment?", must: ["november 1"]}
+- {bot: kestrel, level: easy, section: Health insurance, q: "What is the deductible on the Plus plan?", must: ["500"]}
+- {bot: kestrel, level: easy, section: Dental and vision, q: "How much does vision cover pay for glasses?", must: ["150"]}
+- {bot: kestrel, level: easy, section: Retirement plan (401k), q: "How much does Kestrel match on the 401k?", must: ["4"]}
+- {bot: kestrel, level: easy, section: Employee assistance program, q: "What is the EAP phone number?", must: ["1-800-555-0142|800-555-0142"]}
+- {bot: kestrel, level: easy, section: Remote and hybrid work, q: "How many days a week can I work from home?", must: ["2|two"]}
+- {bot: kestrel, level: easy, section: Travel and expenses, q: "What is the daily meal allowance when travelling?", must: ["60"]}
+- {bot: kestrel, level: easy, section: Travel and expenses, q: "What is the mileage rate?", must: ["0.67"]}
+- {bot: kestrel, level: easy, section: Company vehicles and drivers, q: "How many hours can a driver drive in one work period?", must: ["11"]}
+- {bot: kestrel, level: easy, section: Workplace safety, q: "How often must the forklift certificate be renewed?", must: ["3|three"]}
+- {bot: kestrel, level: easy, section: Code of conduct, q: "Can I accept a gift from a supplier?", must: ["75"]}
+- {bot: kestrel, level: easy, section: Harassment and discrimination, q: "How do I report harassment anonymously?", must: ["speak up|1-800-555-0177|speakup"]}
+- {bot: kestrel, level: easy, section: Performance reviews, q: "When are performance reviews?", must: ["march", "september"]}
+- {bot: kestrel, level: easy, section: Training and tuition, q: "How much tuition assistance can I get?", must: ["5,250"]}
+- {bot: kestrel, level: easy, section: Referral bonus, q: "What is the referral bonus for a driver?", must: ["1,500"]}
+- {bot: kestrel, level: easy, section: Leaving Kestrel, q: "How much notice do I need to give when I resign?", must: ["2|two"]}
+- {bot: kestrel, level: easy, section: People Operations contact, q: "How do I contact People Operations?", must: ["people@kestrel.example|2200|kestrel hub"]}
+- {bot: kestrel, level: hard, section: Overtime, q: "If I work on Independence Day, how much am I paid, and why is it different from normal overtime?", must: ["2|double", "1.5"]}
+- {bot: kestrel, level: hard, section: Paid time off, q: "I have worked here for 4 years. How many PTO days do I get, and what happens to 8 unused days at the end of the year?", must: ["20", "5|five"]}
+- {bot: kestrel, level: hard, section: Parental leave, q: "I joined 4 months ago and we are adopting a child next month. Can I take parental leave, and how can I split it?", must: ["6|six", "three blocks|3 blocks"]}
+- {bot: kestrel, level: hard, section: Training and tuition, q: "If I get $5,250 of tuition help and leave after 8 months, how much do I have to pay back?", must: ["half|2,625|2625"]}
+- {bot: kestrel, level: hard, section: Retirement plan (401k), q: "Explain the 401k vesting rules: what do I keep if I leave after one year?", must: ["2 years|two years", "always|your own"]}
+- {bot: kestrel, level: hard, section: Leaving Kestrel, q: "Compare what happens to unused PTO and unused sick days when I leave.", must: ["paid out", "not"]}
+- {bot: kestrel, refuse: true, level: easy, q: "What is the CEO's salary?"}
+- {bot: kestrel, refuse: true, level: easy, q: "What is the capital of France?"}
+- {bot: kestrel, refuse: true, level: easy, q: "Which stocks should I buy this year?"}
+- {bot: kestrel, refuse: true, level: easy, q: "What is the weather in Columbus tomorrow?"}
+
+# Different words than the documents
+- {bot: kestrel, level: easy, section: Pay and payroll, q: "When do I get my paycheck?", must: ["friday|two weeks|every 2 weeks"]}
+- {bot: kestrel, level: easy, section: Employee assistance program, q: "I'm feeling really stressed, who can I talk to?", must: ["eap|employee assistance|counseling|1-800-555-0142"]}
+- {bot: kestrel, level: easy, section: Remote and hybrid work, q: "Can I work from my apartment?", must: ["2|two|home"]}
+- {bot: kestrel, level: easy, section: Workplace safety, q: "What shoes do I have to wear in the warehouse?", must: ["steel-toe|steel toe"]}
