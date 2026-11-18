@@ -18,7 +18,9 @@ SEED_EXAMPLES = os.getenv("SEED_EXAMPLES", "false").lower() in ("1", "true", "ye
 # --- models and answers ---
 # Default provider for new bots: LLM_PROVIDER if set, else the first one with a key (Claude, Gemini), else mock.
 LLM_PROVIDER = providers.default_provider()
-SEARCH_METHOD = os.getenv("SEARCH_METHOD", "bm25").strip().lower()  # default search for new bots (keyword | bm25)
+# Default search for new bots. Hybrid scored best (97% vs 92% top-3, same refusals; see README), so use it
+# whenever a Gemini key is set; otherwise BM25. Set SEARCH_METHOD to override.
+SEARCH_METHOD = os.getenv("SEARCH_METHOD", "hybrid" if providers.GEMINI_API_KEY else "bm25").strip().lower()
 MAX_ANSWER_TOKENS = int(os.getenv("MAX_ANSWER_TOKENS", "512"))  # caps cost and length of each answer
 LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "25"))
 SECOND_LOOK = os.getenv("SECOND_LOOK", "true").lower() in ("1", "true", "yes")  # no answer found: search wider, ask once more
