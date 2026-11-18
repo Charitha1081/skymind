@@ -1,0 +1,5 @@
+expected_concurrent_users: 200
+latency_target_p95: 4s
+memory: window
+model: auto
+monthly_budget: $300

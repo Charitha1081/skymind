@@ -1,0 +1,51 @@
+# Render Blueprint: one click creates the SkyMind website and its Redis.
+# Render dashboard -> New -> Blueprint -> pick this GitHub repo -> Apply.
+services:
+  - type: web
+    name: skymind
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: skymind-redis
+          property: connectionString
+      - key: ADMIN_TOKEN
+        generateValue: true          # find it under Environment in the Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false                  # optional: free Gemini key from Google AI Studio
+      - key: ANTHROPIC_API_KEY
+        sync: false                  # add your Claude API key in the dashboard for real answers; without it SkyMind runs free in mock mode
+      - key: SEED_EXAMPLES
+        value: "true"                # free Redis is wiped on restart; re-create the sample bots
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"                   # trust Render's proxy for https (X-Forwarded-Proto), so sign-in cookies are Secure
+      - key: TRUSTED_PROXY_HOPS
+        value: "3"                   # proxies that append to X-Forwarded-For; rate limits use the address they wrote,
+                                     # not one the visitor wrote. Check the "X-Forwarded-For has N entries" line in
+                                     # the logs after the first request and raise this if it names a proxy address.
+      - key: CHAT_LIMIT_PER_IP
+        value: "120"                 # messages per minute per address (one address can be a whole campus behind NAT)
+      - key: CHAT_LIMIT_PER_SESSION
+        value: "20"
+      - key: DEPLOY_LIMIT_PER_IP
+        value: "10"                  # bot deploys per hour per visitor
+      - key: MAX_BOTS
+        value: "20"
+      - key: WORKERS
+        value: "1"
+      - key: GOOGLE_CLIENT_ID
+        sync: false                  # paste your Google OAuth client ID in the Render dashboard
+      - key: ADMIN_EMAILS
+        sync: false                  # e.g. you@gmail.com: these Google accounts can open /admin
+
+  - type: keyvalue
+    name: skymind-redis
+    plan: free
+    ipAllowList: []                  # no outside connections: only SkyMind can reach it
+    maxmemoryPolicy: volatile-lru    # under memory pressure drop expiring chat memory first, never the bots

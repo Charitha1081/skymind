@@ -1,0 +1,5 @@
+expected_concurrent_users: 500
+latency_target_p95: 2s
+memory: summary + long_term
+model: auto
+monthly_budget: $50
