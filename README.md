@@ -79,7 +79,9 @@ Search, 60 questions with a section to find and 7 that should find nothing:
 |---|---|---|---|
 | keyword (IDF overlap) | 90% | 93% | 29% |
 | bm25 (default) | 88% | 92% | 71% |
-| hybrid (bm25 + embeddings) | _not measured yet: needs GEMINI_API_KEY_ | | |
+| hybrid (bm25 + embeddings) | 92% | 97% | 71% | | |
+
+Hybrid finds the right section more often (97% vs 92% in the top 3) and refuses off-topic questions as well as BM25, so it is the default whenever GEMINI_API_KEY is set. The difference is 3 of 60 questions, and the similarity threshold (EMBED_MIN_SIM = 0.62, unchanged) was tuned on these same questions, so it still needs confirming on a held-out set.
 
 BM25 refuses off-topic questions far more often than keyword search. Its misses are mostly questions worded differently from the documents ("How can I talk to a person?" vs "Customer support", "money back" vs "refund"), which is what hybrid search and the second look are for.
 
