@@ -87,9 +87,24 @@ def knowledge_for(bot: str) -> str:
 # ---------------------------------------------------------------- search (offline)
 
 async def _embed_all(indexes: dict, qs: list[dict]):
+    """Embed every section and question. The free Gemini tier allows about 100 texts a minute and
+    this needs more, so when Google says "too many", wait a minute and carry on (evaluation only;
+    chat never waits like this)."""
+    async def paced(make_call):
+        for attempt in range(4):
+            try:
+                return await make_call()
+            except embeddings.EmbeddingError as err:
+                if "429" not in str(err) or attempt == 3:
+                    raise
+                print("Gemini free-tier limit reached; waiting 65 seconds, then continuing...", flush=True)
+                await asyncio.sleep(65)
+
     async with httpx.AsyncClient() as http:
-        doc_vecs = {bot: await embeddings.embed_chunks(http, chunks) for bot, (chunks, _) in indexes.items()}
-        q_vecs = await embeddings.embed(http, [q["q"] for q in qs], "RETRIEVAL_QUERY")
+        doc_vecs = {}
+        for bot, (chunks, _) in indexes.items():
+            doc_vecs[bot] = await paced(lambda: embeddings.embed_chunks(http, chunks))
+        q_vecs = await paced(lambda: embeddings.embed(http, [q["q"] for q in qs], "RETRIEVAL_QUERY"))
     return doc_vecs, {q["id"]: v for q, v in zip(qs, q_vecs)}
 
 
