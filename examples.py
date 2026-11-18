@@ -1,112 +1,110 @@
 """Sample customers for demos. The deploy page can load these with one click.
 
-UNT Helper: facts collected from official UNT web pages in November 2026 (always
-verify details on unt.edu). Acme Outdoor Gear is a made-up company.
+Fernleaf Software and Acme Outdoor Gear are made-up companies. Fernleaf is the sample shown on the
+live site (an assistant and a code reviewer); Acme is a second, smaller company used by the tests to
+prove that one company's documents and memory never reach another's.
 """
 import standards
 
-UNT_KNOWLEDGE = """
+FERNLEAF_KNOWLEDGE = """
 ## About this assistant
-This assistant answers questions about the University of North Texas (UNT) using a small set of facts collected from official UNT web pages in November 2026. For deadlines, prices and anything not covered here, it points you to unt.edu.
+This assistant answers questions about Fernleaf Software and its product, Fernleaf, using the company's help documents. Fernleaf Software is a made-up company used to demonstrate SkyMind. For anything not covered here, it points you to Fernleaf's support team.
 
-## About UNT
-The University of North Texas (UNT) is a public university located in the city of Denton, Texas, in the Dallas-Fort Worth area. It was founded in 1890 as a teacher-training institute. UNT is classified as an R1 doctoral university, the highest research activity category in the Carnegie classification. Source: UNT Institutional Research fact sheet, Fall 2025.
+## About Fernleaf
+Fernleaf Software is a startup based in Austin, Texas, founded in 2021 by Maya Chen and Arjun Patel. It makes Fernleaf, an all-in-one tool for small teams to plan projects, track time and send invoices. Fernleaf is used by agencies, consultants and small product teams of 3 to 200 people.
 
-## Size and enrollment
-In fall 2025 UNT enrolled 43,567 students: 34,149 undergraduate students and 9,418 graduate students. UNT offers 243 degree programs: 116 bachelor's, 87 master's, 39 doctoral and 1 special professional program. UNT had 3,310 faculty as of November 3, 2025, including 1,344 full-time faculty. Source: UNT Institutional Research fact sheet, Fall 2025.
+## Company size and customers
+Fernleaf Software has 48 employees and more than 3,200 paying customer teams in 41 countries. About 70 percent of customers are agencies and consultancies. The company raised a $6 million seed round in 2023.
 
-## Colleges and schools
-UNT has 14 colleges and schools: College of Science; College of Liberal Arts and Social Sciences; Brint Ryan College of Business; Mayborn School of Journalism; College of Education; College of Health and Public Service; College of Engineering; College of Merchandising, Hospitality and Tourism; College of Music; College of Visual Arts and Design; College of Information; Toulouse Graduate School; Honors College; and College of Applied and Collaborative Studies.
+## Product modules
+Fernleaf has 14 modules: Projects, Tasks, Boards, Timelines, Time Tracking, Timesheets, Invoicing, Expenses, Client Portal, Docs, Forms, Reports, Automations and Integrations. Every plan includes Projects, Tasks, Boards and Docs; the other modules depend on the plan.
 
-## How to apply as a first-year (freshman) student
-Apply with ApplyTexas or the Common Application. The application fee listed on the admissions page is $75 for U.S. citizens and residents and $85 for international applicants; it is non-refundable, and applicants with a fee waiver upload it to their myUNT portal. Send transcripts, preferably electronically. SAT or ACT scores are optional: applicants with an unweighted high school GPA above 3.0 may be considered without test scores. UNT's score codes are SAT 6481 and ACT 4136. After applying, check your admission status and any missing items in the myUNT portal, which requires activating your EUID account. Admission decisions are made on a rolling basis, and the page lists no fixed deadline, so check the UNT admissions website for current deadlines. Source: unt.edu/admissions/freshman/how-to-apply.
+## How to set up a new workspace
+To set up a new workspace, sign up at the Fernleaf website with your work email, choose a workspace name, then pick a template (Agency, Consulting or Product Team) or start blank. Next, invite your team from Settings, then Members, then Invite, and give each person a role. Finally, connect your calendar and any integrations you use, and create your first project. Most teams finish setup in about 15 minutes.
 
-## Housing
-UNT has 15 residence halls. Living Learning Communities let students live with others who share a major or interest, and the residence halls include study spaces for groups. To live on campus, apply through the Housing Portal linked from housing.unt.edu. Housing and dining rates, payment deadlines and the assignment timeline are posted on housing.unt.edu; housing payments go through your myUNT account. Source: housing.unt.edu.
+## Pricing plans
+Fernleaf has three pricing plans available: Starter, Team and Business. The Starter plan is free for up to 3 users and 5 projects. The Team plan costs $12 per user per month billed yearly, or $15 per user per month billed monthly, and adds Time Tracking, Invoicing and Automations. The Business plan costs $24 per user per month billed yearly and adds single sign-on (SSO), advanced reports, audit logs and priority support. How much you pay depends on the plan and the number of users.
 
-## Housing contact
-Housing and Residence Life is in the UNT Welcome Center, 1417 Maple St, Denton, TX 76201. Email housinginfo@unt.edu or call 940-565-2610. Source: housing.unt.edu.
+## Pricing contact
+For questions about plans, quotes or larger teams, contact the sales team at sales@fernleaf.example or book a call from the Pricing page. Sales replies within one business day, Monday to Friday, 9 AM to 6 PM Central Time.
 
-## Dining
-Eagle Landing is UNT's newest and largest dining hall, with seven restaurants. Kitchen West is described by UNT as the first dining hall in Texas free of the Big 8 food allergens. The University Union has fast-food options including Burger King, Chick-fil-A, Fuzzy's Taco Shop and Jamba.
+## Enterprise plans
+Teams of more than 200 people can ask for an Enterprise plan with custom pricing, a dedicated success manager and a custom contract. This assistant does not quote Enterprise prices; contact sales for a quote.
 
-## Meal plans
-All first-year students living on campus must have an Unlimited Meal Plan: Everyday Unlimited or Weekday Unlimited, chosen when applying for housing. Meal plans are optional, but recommended, for upperclassmen and all other students, including graduate students and commuters. Other plans include 8-a-Week, 5-a-Week, Simply Swipes 80 and Dining Dollars. Dining Dollars are a cashless balance accepted at all campus dining locations, paid by swiping your UNT student ID. Buy plans and check balances at mealplans.unt.edu. For prices, see the Housing and Dining Rates page on housing.unt.edu. Source: dining.unt.edu.
+## Billing and invoices
+Fernleaf bills by credit card or, on yearly Business plans, by bank transfer. Your Fernleaf invoices are emailed to the billing owner and can be downloaded from Settings, then Billing. Prices do not include sales tax or VAT, which is added where required.
 
-## Parking permits
-To park on campus, every lot needs a valid permit or a paid hourly session; parking without one can get you a citation. Buy permits through the UNT Parking Portal (transportation.unt.edu). Commuter options include the Eagle permit (Eagle and remote lots, closer to academic buildings), the Remote permit with DCTA shuttle service, Off-Campus Parking with DCTA, covered parking in the Highland Street Garage, and hourly Premium Parking spaces. Residents can choose Resident Reserved (Zone 1 or Zone 2), Resident Lot 20, Highland Street Garage floors 4 to 7, or Resident Remote at the DATCU Stadium lots with a shuttle. Questions: Transportation Services, 940-565-3020. Source: transportation.unt.edu/student.html.
+## Free trial
+Every new workspace gets a 14-day free trial of the Business plan, with no credit card needed. When the trial ends, the workspace moves to the free Starter plan unless you choose a paid plan, and no data is deleted.
 
-## Buses, shuttles and getting around
-UNT students ride DCTA buses at no extra cost by showing their student ID; transportation fees are included in tuition, so no separate pass is needed. Track buses in the Transit app. Night Flight is a free late-night shuttle around main campus for UNT students during fall and spring semesters: Monday to Friday 11 PM to 2 AM and Saturday to Sunday 9 PM to 2 AM, about every 10 minutes, tracked in the TripShot app. For travel home over breaks, FlixBus departs from Lot 20. Source: transportation.unt.edu/student.html.
+## Upgrading or downgrading
+You can upgrade at any time from Settings, then Billing, and the new features turn on immediately; you pay only the prorated difference. Downgrades take effect at the end of the current billing period.
 
-## Counseling and mental health
-If you feel stressed, anxious or overwhelmed, you can talk to someone: Counseling and Testing Services offers individual therapy in person or by Zoom, groups and workshops, psychiatric services through the Student Health and Wellness Center, and Togetherall, an online peer-support community at no cost to UNT students. To schedule, call 940-565-2741 or email counselingandtestingservices@unt.edu, Monday to Friday 8 AM to 5 PM. For walk-in crisis help during weekday office hours, go to Chestnut Hall, Suite 311. After 5 PM, call 940-565-2741 and choose option 1 for the crisis line. In a life-threatening emergency call 911; the national Suicide and Crisis Lifeline is 988. Source: studentaffairs.unt.edu/student-counseling.
+## Cancelling a subscription
+To cancel, the billing owner goes to Settings, then Billing, then Cancel subscription. The workspace stays on the paid plan until the end of the period you paid for, then moves to Starter. Yearly plans cancelled within 30 days of payment get a full refund.
 
-## Student Health and Wellness Center (doctor visits)
-The Student Health and Wellness Center (SHWC) sees students by appointment. Book through the SHWC Patient Portal (myosh.unt.edu) or call Scheduling at 940-565-2333; to cancel or reschedule call 940-565-2793. Nurse consultations are available Monday to Thursday 8 AM to 5 PM and Friday 9:30 AM to 5 PM when no provider appointment is open. Telemedicine is available for visits that need no lab tests, for students located in Texas. Bring your UNT ID, insurance card and a form of payment; some visits have charges, and missed appointments that weren't cancelled in time get a no-show fee. Source: studentaffairs.unt.edu/student-health-and-wellness-center/appointments.html.
+## Discounts for startups and nonprofits
+Registered nonprofits get 50 percent off the Team and Business plans. Startups less than two years old with under $1 million in funding get 30 percent off for their first year. Students and teachers can use the Team plan free with a school email address.
 
-## Career Center and jobs
-The Career Center is in Sage Hall, Suite 202. Current students and recent graduates book career coach appointments through Navigate; alumni who graduated more than a year ago use Handshake. Drop-in help (no appointment) covers resumes, cover letters, interview practice, LinkedIn profiles and headshots; drop-in hours change each semester, so check careercenter.unt.edu. Students find jobs, internships and on-campus interviews on Handshake. Source: careercenter.unt.edu.
+## Integrations
+Fernleaf connects with Slack, Microsoft Teams, Google Calendar, Outlook Calendar, GitHub, GitLab, QuickBooks, Xero, Stripe and Zapier. Integrations are set up from Settings, then Integrations, by an admin.
 
-## EUID, passwords and IT help
-Your EUID (enterprise user ID) is the username for most UNT online accounts, including myUNT. Activate it on the Account Management System (AMS) with your UNT ID, birth date and last name. If you forget your EUID or password, use the "Forgot your EUID or password?" link below the Login button. The UIT Help Desk is in Sage Hall, Room 330; call 940-565-2324 or email helpdesk@unt.edu. Source: it.unt.edu/helpdesk/account-management.html.
+## API and developer docs
+Fernleaf has a REST API and webhooks on the Team and Business plans. API keys are created in Settings, then Developer. The API allows 100 requests per minute per workspace. Documentation is in the Developer Center.
 
-## Spring 2027 academic calendar
-Full spring 2027 semester dates: registration opened October 5, 2026. Classes begin Monday, January 11, 2027. The last day to add a class or swap sections is January 15. Martin Luther King Jr. holiday is January 18 (no classes). The last day to drop a class without a W (census) is January 22. Spring break is March 8 to 14, 2027. The last day to drop a course with a grade of W is April 9. The last regular class meeting is April 29, final exams are May 1 to 7, and university commencement is May 6 to 9, 2027. Source: registrar.unt.edu spring 2027 academic calendar.
+## Mobile apps
+Fernleaf has free mobile apps for iPhone (iOS 16 or later) and Android (Android 11 or later). The apps support tasks, comments, time tracking and approvals; invoicing and reports are web only.
 
-## Tutoring and libraries
-UNT Libraries, the Writing Center and the Learning Center offer free walk-in tutoring on the second floor of Willis Library, with no appointment needed. Hours change each semester, so check library.unt.edu/services/tutoring for current hours.
+## Team roles and permissions
+Fernleaf has four roles: Owner, Admin, Member and Guest. Owners manage billing; Admins manage members, settings and integrations; Members work on projects they belong to; Guests (for example clients) see only the projects shared with them and are free on all plans.
 
-## Financial aid and tuition
-Tuition, fees and financial aid change every year, so this assistant does not quote amounts. For financial aid, visit financialaid.unt.edu and check your myUNT portal for your own aid and scholarship status.
+## Storage limits
+Starter workspaces get 2 GB of file storage, Team workspaces get 100 GB, and Business workspaces get 1 TB. A single uploaded file can be up to 250 MB.
 
-## AI Expo by SSAI, November 16, 2026
-AI Expo by SSAI takes place on Monday, November 16, 2026, from 6:00 to 9:00 PM in the Emerald Ballroom of the University Union. UNT students present live, working AI project demos at tables (no slide decks), and ten organizations from across the Dallas-Fort Worth area have industry tables. The evening includes a live dance performance to open, a panel discussion called Building a Career AI Won't Replace, top teams pitching on stage to judges, and dinner. Competition prizes are 1st place $200, 2nd place $150 and 3rd place $100, all Visa gift cards. Entries to present closed on November 9, but anyone can come to watch by filling out the registration form. The expo is open to all UNT students and no AI background is needed.
+## Data export and backups
+Admins can export all workspace data as CSV and JSON from Settings, then Export. Fernleaf backs up all data every hour and keeps backups for 35 days. Deleted projects can be restored from the Trash for 30 days.
 
-## Athletics and the Mean Green
-UNT's teams are the Mean Green and compete in NCAA Division I, in the American Athletic Conference. UNT fields 16 sports. The mascot is an eagle, chosen by student vote in 1922, and fans know him as Scrappy. Football is played at DATCU Stadium, which seats 30,100 and was previously named Apogee Stadium. A soccer and track and field stadium and an indoor practice facility opened in 2019. For schedules, tickets and scores, see meangreensports.com. Source: unt.edu/allabout/mean-green.html.
+## Data security and compliance
+Fernleaf encrypts data in transit (TLS 1.3) and at rest (AES-256). Data is hosted in the United States, with a European Union region available on the Business plan. Fernleaf has a SOC 2 Type II report, available to customers on request.
 
-## School spirit and traditions
-Three UNT traditions come up often. The Mean Green Machine is a green 1929 Ford Model A Tudor Sedan that appears at games and campus events. The UNT Talons fire a muzzleloader cannon named Boomer at football games to mark scores. After a UNT varsity win, green lights shine on McConnell Tower. Source: unt.edu/allabout/mean-green.html.
+## Privacy and GDPR
+Fernleaf follows GDPR and signs a Data Processing Agreement with customers on request. Fernleaf never sells customer data or uses it to train AI models. Privacy questions go to privacy@fernleaf.example.
 
-## Recreation and fitness
-The campus gym is the Pohl Recreation Center, run by Recreational Sports at 1900 Chestnut Street, Denton, TX 76201. Students work out there at no extra charge. Fall 2026 hours, covering August 9 to December 12, are Monday to Thursday 6 AM to midnight, Friday 6 AM to 10 PM, Saturday 8 AM to 7 PM and Sunday noon to midnight. Rec Sports also runs a lap pool, a climbing wall, an Outdoor Pursuits Center, the Waranch Tennis Center and the P.E.B. field, plus badminton and volleyball. Hours change between semesters and over breaks, so check recsports.unt.edu/hours before you go. Questions: 940-565-2275 or recsports@unt.edu. Source: recsports.unt.edu/hours.html.
+## Accessibility
+The Fernleaf web app aims to meet WCAG 2.2 level AA. It supports keyboard navigation, screen readers and a high-contrast theme. Report accessibility problems to support.
 
-## Student organizations and getting involved
-UNT has more than 450 student organizations, also called student orgs or clubs. To join a club, browse the groups and their events on EagleLink, the student organization platform, and contact the one you want to join. You can also book an Involvement Appointment online to talk with a Campus Life Ambassador about ways to get involved. The Student Activities Center is at 1155 Union Circle, Suite 345, Denton, Texas; email student.activities@unt.edu or call 940-565-3807. Source: studentaffairs.unt.edu/student-activities-center.
+## Uptime and status page
+Fernleaf targets 99.9 percent uptime each month, and Business plans have this in their service level agreement. Live status, incidents and planned maintenance are posted on the Fernleaf status page.
 
-## Campus safety and UNT Police
-The UNT Police Department is in the Sullivant Public Safety Center, 1700 Wilshire St., Denton, TX 76201. In an emergency call 911. The department's main line is 940-565-3000, the anonymous tip line is 940-369-TIPS (8477), and the email address is unt.police@unt.edu. Email is not monitored for emergencies or incidents in progress, so call for anything urgent. If you do not feel safe on campus, at night or at any other time, call the police department rather than emailing. Emergency alerts are at alert.unt.edu. Source: police.unt.edu/about/contact.html.
+## Customer support hours
+Support is available by chat and email at support@fernleaf.example, Monday to Friday, 8 AM to 8 PM Central Time. Starter and Team customers get a first reply within one business day; Business customers get priority support with a first reply within 4 hours.
 
-## Willis Library building guide
-Willis Library sits on the Library Mall in the centre of the Denton campus; phone 940-565-2413, email askus@unt.edu. You can print on the lower level, the first floor and the fourth floor. The lower level is a quiet area with study pods, lockers, printing and copying. The first floor is the social floor and holds the Access Services desk, The Spark makerspace and One Button Studio, computer labs, course reserves, laptop checkout, interlibrary loan, printing, and a lactation and prayer room. The second floor has Media Library services, the Media Commons and the Experiential Learning Lab, plus reservable rooms. The third floor holds the general book collection. The fourth floor has Music Library services, Special Collections and the Soundbox Music Technology Lab. An elevator serving every floor is to the right as you enter. Study rooms and pods can be reserved through the library calendar. Hours are at calendar.library.unt.edu/hours and service desks start closing ten minutes before the building does. Source: library.unt.edu/willis.
+## Login, passwords and SSO
+If you forget your password, click Forgot password on the login page and follow the email link, which expires after 1 hour. Two-factor authentication can be turned on in your profile, and admins can require it for everyone. Business plans support single sign-on (SSO) with Google Workspace, Microsoft Entra ID and Okta.
 
-## Wi-Fi on campus
-UNT has several wireless networks. UNT Network is the recommended one: it is encrypted and remembers your login. Eduroam lets UNT students, staff and faculty connect at other participating universities by selecting Eduroam and signing in with their EUID or EUID@unt.edu and their usual password. EagleNet is open and unencrypted, so it is not for private data. UNT-Guest is for visitors and needs no UNT account, gives internet access only, and requires accepting the acceptable use policy. Boldyn is for UNT Housing residents. Wi-Fi is free for students, staff and faculty, and you sign in with your EUID and password. If your password contains a % or a ? you will need to set a new one in the Account Management System. Wireless help: 940-565-2324 or ithelp@unt.edu. Source: it.unt.edu/helpdesk/wifi.html.
+## Help center and webinars
+The Help Center has step-by-step guides and short videos. Fernleaf runs a free 45-minute onboarding webinar every Tuesday at 11 AM Central Time; sign up from the Help Center.
 
-## Canvas and online courses
-Canvas is UNT's online learning management system, at canvas.unt.edu. Students are loaded into their courses about one week before the term begins, but a course only becomes visible once the instructor publishes it, so an empty dashboard that week is normal. You may need to pin a course from All Courses to see it on your dashboard. After a course's end date, students lose access to its content. Canvas help: 940-369-7394 or lms@unt.edu. Source: lms.unt.edu/resources/canvas-faq.html.
+## Fernleaf Summit, November 16, 2026
+Fernleaf Summit, the company's yearly customer event, takes place on Monday, November 16, 2026, from 9:00 AM to 5:00 PM in Harbor Hall at the Austin Convention Center. It includes product talks, a roadmap keynote by the founders, hands-on workshops and a customer awards session. Tickets are free for customers; register from the Events page.
 
-## Registering for classes
-Students register online through MyUNT at my.unt.edu. Complete the UNT Registration Task each term first, because your enrollment address and course instruction type can affect your tuition. Run your online degree audit to check requirements, and book an appointment with your academic advisor if you need one; advising is as needed for most students, but new undergraduates must attend orientation before they can register. Review the Schedule of Classes in MyUNT and use Schedule Builder to add classes to your shopping cart. For orientation questions, the Office of New Student Programs is on 940-565-4198. If MyUNT will not load, clear your cache and cookies or use a private browser window. Source: registrar.unt.edu/registration/how-to-register.html.
+## Product roadmap 2027
+Planned for 2027: AI meeting notes linked to tasks, resource planning across projects, a client approval flow for invoices, and an offline mode for the mobile apps. Dates can change; the roadmap is updated every quarter.
 
-## Transcripts and academic records
-For an unofficial transcript, log in to myUNT, select Academic Records and click View Unofficial Transcript. Official transcripts are ordered through Parchment, UNT's provider, which takes orders at any hour: in myUNT select the Academic Records icon, then Request Official Transcript, then Order Transcript. An official transcript costs $10.00 and can be sent electronically to any valid email address or mailed as a hard copy. You can choose Hold for Degree or Hold for Grades so the order processes after those post; a notarized transcript adds two to four weeks. In-person pickup is at ESSC 147, Monday to Friday 8 AM to 5 PM, with photo ID. A record hold can block an order, and you will be notified if one does. Source: registrar.unt.edu/transcripts-and-records/order-transcript.html.
+## Release notes
+Fernleaf releases updates every two weeks. Release notes are posted in the app under What's New and in the Help Center. Recent releases added recurring tasks, invoice reminders and a dark theme.
 
-## University Union
-The University Union is at 1155 Union Circle, Denton, TX 76203; phone 940-565-3805, email union@unt.edu. Food inside includes Chick-fil-A, Burger King, Union Burger, Krispy Krunchy Chicken, Avesta, Jamba Juice, Verde Everyday Express and The Campus Chat food court. The campus bookstore is Barnes & Noble on Level 1, next to Eagle Post. The Info Desk, which is also Lost and Found, is on Level 2, along with the Eagle Student Service Center and Design Works, where you can print or get design work done. The Union also holds the Union Arts Center and the Union Art Gallery, and the University Program Council shows free movies in the Lyceum for students with a student ID. Union and store hours are at studentaffairs.unt.edu/university-union/visit/hours.html, and dining hours at dining.unt.edu/hours. Source: studentaffairs.unt.edu/university-union.
+## Careers at Fernleaf
+Fernleaf Software is hiring engineers, designers and customer success staff. The team works remotely across the United States and Canada, with an office in Austin. Open roles are listed on the Careers page.
 
-## Transfer admission
-UNT guarantees transfer admission on a sliding scale of transferable credit hours and college GPA: 45 hours or more needs a 2.0, 31 to 44 hours needs a 2.25, and 16 to 30 hours needs a 2.5. With 15 transferable hours or fewer you need both a 2.5 college GPA and a 3.25 unweighted high school GPA; test scores are recommended but not listed as required. Applicants who do not meet these may be eligible for Individual Review, a holistic evaluation with extra documentation; UNT emails eligible applicants instructions and a myUNT upload link. Deadlines and fees for transfer applicants are on the separate Deadlines and Fees page at unt.edu/admissions. Source: unt.edu/admissions/transfer/admission-requirements.html.
+## Partner program
+Agencies and consultants who set up Fernleaf for clients can join the Partner program for a 20 percent revenue share, a free Business workspace and a listing in the partner directory.
 
-## Office of Disability Access
-Students who need academic accommodations register with the Office of Disability Access (ODA). You must be admitted to UNT first, because the ODA cannot decide eligibility before then. Submit your documentation and the Request for Reasonable Accommodation form in person, by email to apply.oda@unt.edu, or by fax to 940-369-7969; what documentation is needed depends on the disability. The ODA will then contact you to schedule a Registration Meeting with a coordinator, in person or by phone for distance learners; arriving more than ten minutes late may mean rescheduling. Registration usually takes two to three weeks, and incomplete documentation delays it. Students at UNT Dallas or the UNT Health Science Center register with those campuses separately. Source: studentaffairs.unt.edu/office-disability-access/students/how-to-register.html.
+## Referral program
+Refer another team and you both get one month of your current plan free when they start a paid plan. Find your referral link in Settings, then Referrals.
 
-## International students
-International Student and Scholar Services is in Marquis Hall, 1511 W. Mulberry Street, with walk-in hours at Marquis 110. Email internationaladvising@unt.edu or call 940-565-2195, and appointments can be booked online. The office provides immigration advising, F-1 Fundamentals workshops covering topics such as CPT and OPT, forms and information sheets, immigration news, newsletters and scam alerts. It serves more than 4,500 international students and scholars, with separate sections for new international students, J-1 exchange students and sponsored students. Immigration rules change, so check international.unt.edu for the current position. Source: international.unt.edu/international-students.
-
-## College of Music
-UNT's College of Music is the largest public university music program in the United States, and The Hollywood Reporter has listed it among the 20 best music schools in the world. It was one of ten institutions in the inaugural Yamaha Institution of Excellence program, and Billboard has named UNT a top music business school worldwide for eight years running. Music-Colleges.com ranks its undergraduate jazz studies 2nd in Texas, 4th in the South and 22nd nationally, and the College overall 5th in Texas and 51st nationally. The Texas Music Office has certified Denton as a music-friendly Texas community. Source: unt.edu/rankings/college-music.html.
+## Office locations
+Fernleaf's head office is at 500 Congress Avenue, Suite 1200, Austin, Texas 78701. The company also has a small office in Toronto, Canada.
 """
 
 ACME_KNOWLEDGE = """
@@ -134,7 +132,7 @@ Gift cards never expire and can be used online or in stores. Promo codes cannot 
 
 ACME_ENGINEERING_RULES = """
 ## About these rules
-Engineering rules for the Python services this UNT student team builds and maintains, SkyMind included. Reviews cite these rules by section title.
+Engineering rules for the Python services the Fernleaf engineering team builds and maintains, SkyMind included. Reviews cite these rules by section title.
 
 ## Security rules
 Never write API keys, passwords or tokens in code; read them from environment variables (os.environ) and keep them in the secrets manager. A key that was ever committed must be rotated the same day. Never build SQL with string formatting or +; always use parameterised queries. Never call eval() or exec() on anything a user can influence. Validate every input from users (student IDs, course numbers, form fields) before using it.
@@ -171,17 +169,15 @@ Acme has two stores (Denver and Austin), a small support team, and no mobile app
 
 EXAMPLES = [
     {
-        "key": "unt",
-        "bot_name": "UNT Helper",
-        "company": "University of North Texas",
+        "key": "fernleaf",
+        "bot_name": "Fernleaf Assistant",
+        "company": "Fernleaf Software",
         "expected_concurrent_users": 500,
         "latency_target_p95": "4s",
         "memory": "window",
         "model": "auto",
         "monthly_budget": "$600",
-        "knowledge": UNT_KNOWLEDGE.strip(),
-        "website": "https://www.unt.edu",  # not in the documents? look it up on unt.edu (and its subdomains)
-        "web_lookup": True,
+        "knowledge": FERNLEAF_KNOWLEDGE.strip(),
     },
     {
         "key": "acme",
@@ -196,8 +192,8 @@ EXAMPLES = [
     },
     {
         "key": "acme-review",
-        "bot_name": "UNT Code Reviewer",
-        "company": "University of North Texas",
+        "bot_name": "Fernleaf Code Reviewer",
+        "company": "Fernleaf Software",
         "job": "code_review",
         "expected_concurrent_users": 20,
         "latency_target_p95": "15s",
@@ -220,4 +216,4 @@ EXAMPLES = [
     },
 ]
 
-DEPLOY_KEYS = ("unt", "acme-review")  # the sample bots that are actually deployed
+DEPLOY_KEYS = ("fernleaf", "acme-review")  # the sample bots that are actually deployed

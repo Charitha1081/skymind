@@ -22,7 +22,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false                  # add your Claude API key in the dashboard for real answers; without it SkyMind runs free in mock mode
       - key: SEED_EXAMPLES
-        value: "true"                # free Redis is wiped on restart; re-create UNT Helper and Acme Support
+        value: "true"                # free Redis is wiped on restart; re-create the sample bots
       - key: FORWARDED_ALLOW_IPS
         value: "*"                   # trust Render's proxy for https (X-Forwarded-Proto), so sign-in cookies are Secure
       - key: TRUSTED_PROXY_HOPS

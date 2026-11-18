@@ -1,6 +1,8 @@
-"""Score search on its own, across all four question sets, without calling a model.
+"""Score search on its own, across every question set, without calling a model.
 
-    python3 evaluate_search.py
+    python3 evaluate_search.py                     # every bot
+    python3 evaluate_search.py fernleaf            # one bot
+    python3 evaluate_search.py --min-recall 0.90   # exit with an error below this recall@3 (used by CI)
 
 Two numbers, both standard for retrieval:
 
@@ -13,6 +15,7 @@ Two numbers, both standard for retrieval:
 evaluate.py grades the whole pipeline on questions.yaml and needs an API key. This grades
 search alone, on every set, and runs offline, so the number is cheap to re-check.
 """
+import os
 import re
 import sys
 
@@ -21,16 +24,18 @@ import yaml
 import examples
 import knowledge
 
+# Held-out sets keep the evaluation honest: write them after the system is built, never tune on
+# them, and write the blind one without looking at the code. A set whose file doesn't exist yet is
+# skipped (see TODO.md, Phase 2), so add them as you write them.
 SETS = {
     "original": ("questions.yaml", "written while building the system"),
-    "held-out": ("questions_heldout.yaml", "written after, to test the rebuilt router"),
-    "third": ("questions_third.yaml", "never used to tune anything"),
+    "held-out": ("questions_heldout.yaml", "written after, never used to tune"),
     "blind": ("questions_blind.yaml", "written without looking at the code"),
 }
 
 
 def section_of(item: dict) -> str | None:
-    """A section with a comma in it ("Buses, shuttles and getting around") parses as extra keys."""
+    """A section with a comma in it ("Login, passwords and SSO") parses as extra keys unless quoted."""
     s = item.get("section")
     if s is None:
         return None
@@ -38,7 +43,7 @@ def section_of(item: dict) -> str | None:
     return (s + ", " + ", ".join(extra)) if extra else s
 
 
-def main(only: str | None = None) -> int:
+def main(only: str | None = None, min_recall: float = 0.0) -> int:
     indexes = {}
     for e in examples.EXAMPLES:
         ch = knowledge.make_chunks(e["knowledge"])
@@ -47,6 +52,8 @@ def main(only: str | None = None) -> int:
     rows, misses = [], []
     tot = {"hit": 0, "ans": 0, "ok": 0, "ref": 0}
     for name, (path, note) in SETS.items():
+        if not os.path.exists(path):
+            continue
         hit = ans = ok = ref = 0
         for it in yaml.safe_load(open(path)):
             if only and it.get("bot") != only:
@@ -85,8 +92,18 @@ def main(only: str | None = None) -> int:
         print("\nEvery question search got wrong:\n")
         for setname, what, q, found in misses:
             print(f"- [{setname}] {what}: {q!r} -> {found}")
+    recall = h / a if a else 0.0
+    if recall < min_recall:
+        print(f"\nFAIL: recall@3 is {recall:.1%}, below the floor of {min_recall:.0%}.")
+        return 1
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else None))
+    args = sys.argv[1:]
+    floor = 0.0
+    if "--min-recall" in args:
+        i = args.index("--min-recall")
+        floor = float(args[i + 1])
+        del args[i:i + 2]
+    sys.exit(main(args[0] if args else None, floor))

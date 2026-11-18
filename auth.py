@@ -11,7 +11,7 @@ Sign-in flow (Google Identity Services, "Sign in with Google" button):
 Access rules (chosen by each company for each bot):
   public  anyone with the link can chat
   google  people must sign in with Google, optionally limited to some email domains
-          (e.g. unt.edu) and/or a list of email addresses
+          (e.g. example.com) and/or a list of email addresses
 """
 import hashlib
 import os
@@ -106,7 +106,7 @@ def parse_access(raw) -> dict:
     for d in _split(raw.get("allowed_domains")):
         d = d.lstrip("@")
         if not DOMAIN_RE.match(d):
-            raise ValueError(f"'{d}' is not a valid email domain (example: unt.edu).")
+            raise ValueError(f"'{d}' is not a valid email domain (example: example.com).")
         if d not in domains:
             domains.append(d)
     emails = []

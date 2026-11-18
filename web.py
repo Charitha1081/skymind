@@ -1,6 +1,6 @@
 """Website lookup: when a bot's documents don't have the answer, look it up on the company's own website.
 
-Only the company's own site is searched (e.g. unt.edu and its subdomains), never the whole internet:
+Only the company's own site is searched (e.g. example.com and its subdomains), never the whole internet:
 a company's assistant should not repeat what some random page or a competitor says.
 
 Two ways, tried in order:
@@ -40,7 +40,7 @@ def domain_of(website: str) -> str:
 
 
 def normalise_website(raw: str) -> str:
-    """'unt.edu' or 'https://www.unt.edu/x' -> 'https://www.unt.edu/x'. Raises ValueError if unusable."""
+    """'example.com' or 'https://www.example.com/x' -> 'https://www.example.com/x'. Raises ValueError if unusable."""
     raw = (raw or "").strip()
     if not raw:
         return ""
@@ -178,7 +178,7 @@ async def lookup(http, redis, bot: dict, question: str, provider: str, timeout: 
 
 def trim_cut_off(text: str) -> str:
     """An answer that hit the length limit ends mid-sentence or mid-link: cut back to the last complete
-    line or sentence, so users never see '[UNT Catalog](https://cat'."""
+    line or sentence, so users never see '[Product Catalog](https://cat'."""
     cut = max(text.rfind("\n"), text.rfind(". "), text.rfind(".\n"))
     if cut > len(text) // 2:
         text = text[:cut + 1].rstrip()

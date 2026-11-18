@@ -151,7 +151,7 @@ def _header(active=""):
 FOOTER = (
     '<footer class="site-footer"><div class="wrap">'
     "<span>SkyMind: AI helpers, deployed and managed.</span>"
-    "<span>Demo build for the UNT AI Expo, November 2026. Costs use placeholder prices.</span>"
+    "<span>Demo build. Costs use placeholder prices.</span>"
     "</div></footer>"
 )
 
@@ -609,8 +609,8 @@ DEPLOY_BODY = _header("deploy") + r"""
         </div>
         <div id="access_more" hidden>
           <div class="row">
-            <div><label for="access_domains">Allowed email domains <span class="sub">(optional)</span></label><input id="access_domains" placeholder="unt.edu, my.unt.edu"></div>
-            <div><label for="access_emails">Allowed people <span class="sub">(optional)</span></label><input id="access_emails" placeholder="dean@unt.edu, alex@gmail.com"></div>
+            <div><label for="access_domains">Allowed email domains <span class="sub">(optional)</span></label><input id="access_domains" placeholder="yourcompany.com, team.yourcompany.com"></div>
+            <div><label for="access_emails">Allowed people <span class="sub">(optional)</span></label><input id="access_emails" placeholder="alex@yourcompany.com, sam@gmail.com"></div>
           </div>
           <div class="hint">Leave both empty to let any Google account in. Fill either one to allow only those domains or people.</div>
         </div>
@@ -628,7 +628,7 @@ DEPLOY_BODY = _header("deploy") + r"""
             <div class="hint">Only your own site is searched, never the rest of the internet. Answers link their source pages.</div></div>
           <div id="website_box" hidden><label for="website">Your website</label>
             <input id="website" type="url" placeholder="https://www.yourcompany.com">
-            <div class="hint">Its subdomains count too (unt.edu covers dining.unt.edu).</div></div>
+            <div class="hint">Its subdomains count too (yourcompany.com covers help.yourcompany.com).</div></div>
         </div>
         <div class="stdrow" id="stdrow" hidden><span class="sub small">Start from a standard:</span></div>
         <p class="sub" id="docs-intro" style="margin:0">Paste FAQs, policies or product info, upload files, or import web pages. Each adds to the documents below. Lines starting with # or ## become section titles.</p>
@@ -1237,11 +1237,11 @@ function accessEditor(bot, row) {
   sel.value = a.mode;
   var dom = document.createElement("input");
   dom.id = id + "domains";
-  dom.placeholder = "unt.edu";
+  dom.placeholder = "yourcompany.com";
   dom.value = (a.allowed_domains || []).join(", ");
   var em = document.createElement("input");
   em.id = id + "emails";
-  em.placeholder = "dean@unt.edu";
+  em.placeholder = "alex@yourcompany.com";
   em.value = (a.allowed_emails || []).join(", ");
   var r1 = document.createElement("div");
   r1.className = "row";

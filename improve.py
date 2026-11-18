@@ -31,7 +31,7 @@ REFUSAL_MARKERS = (
     "do not have details", "not able to find", "unable to find", "couldn't find", "could not find",
     "can't find", "cannot find", "no information about", "not in my documents", "isn't in my documents",
     "is not in my documents", "not covered in", "isn't covered", "i don't know", "i do not know",
-    # partial answers: "UNT has 126 graduate degrees. However, I don't have the details of ..."
+    # partial answers: "Fernleaf has 14 modules. However, I don't have the details of ..."
     "don't have the details", "do not have the details", "don't have specific", "do not have specific",
     "don't have the specific", "do not have the specific", "don't have a list", "don't have the full",
     "don't have more", "don't have further", "not in the documents", "not in my information",

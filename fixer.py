@@ -1,6 +1,6 @@
 """Self-fixing bots: turn "questions I couldn't answer" into new document sections, with sources.
 
-  1. Read the company's web page (e.g. https://www.unt.edu) and the links on it.
+  1. Read the company's web page (e.g. https://www.example.com) and the links on it.
   2. Follow the links that look related to the unanswered questions (link text and address share
      words with them), up to MAX_PAGES pages on the same site. Every fetch goes through
      ingest.fetch_page, so private addresses are refused (SSRF protection).
