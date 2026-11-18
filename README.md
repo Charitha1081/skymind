@@ -87,7 +87,16 @@ BM25 refuses off-topic questions far more often than keyword search. Its misses 
 
 Routing: the router agrees with the easy/hard labels on 59 of 59 questions. Treat that as a sanity check, not a result: these questions were written by people who knew how the router works. The honest test is a held-out set written without looking at the code (see `TODO.md`).
 
-Answers with real models (accuracy, cost and latency per setup) have not been measured on these samples yet. That is Phase 1 of `TODO.md`. The earlier numbers were measured on a university sample that has since been replaced, so they no longer apply. How the router was rebuilt after failing on new questions is written up in `docs/reversals.md`.
+### Answers with real models (Claude, November 2026)
+
+67 questions (`questions.yaml`), BM25 search, document answers only (website lookup off), one run each:
+
+| Setup | Accuracy | Correct refusals | Model time avg / p95 | Whole answer avg / p95 | $ per 1,000 answers |
+|---|---|---|---|---|---|
+| cheap: claude-haiku-5-5 | 97% | 100% | 0.82 s / 1.04 s | 1.1 s / 2.3 s | 0.16 |
+| strong: claude-sonnet-5-5 | 97% | 100% | 1.61 s / 2.84 s | 2.2 s / 5.0 s | 3.94 |
+
+The cheap model was as accurate as the strong one at 1/25 of the price and half the time, so it is the recommended setting for document questions. Model time comes from each answer's trace; whole-answer time was measured from a laptop to the hosted service, so it includes network travel. This is one run on one question set: re-check on the held-out sets (`TODO.md`, item 9) before treating it as settled. How the router was rebuilt after failing on new questions is written up in `docs/reversals.md`.
 
 To measure hybrid and tune its similarity threshold:
 
