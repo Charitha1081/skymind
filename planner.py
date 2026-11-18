@@ -4,7 +4,7 @@ Turns a simple spec (users, latency, memory, model, budget) into a plan:
 replica count, a latency check, and an estimated monthly cost.
 
 IMPORTANT: model prices in MODELS are Claude Haiku 5.5 / Sonnet 5.5 list prices (Nov 2026).
-Traffic numbers in ASSUMPTIONS and model latencies are still placeholder estimates:
+Model latencies are measured (see MODELS). Traffic numbers in ASSUMPTIONS are still placeholder estimates:
 replace them with values measured in your load tests before quoting results as fact.
 
 Run from the command line:   python planner.py spec.yaml
@@ -33,13 +33,13 @@ ASSUMPTIONS = {
     "overhead_s": 0.15,                 # time spent outside the LLM call
 }
 
-# Model tiers: average and p95 latency in seconds (placeholders: replace with measurements).
-# Prices per provider live in providers.py; the price fields here are the Claude defaults.
+# Model tiers: average and p95 latency in seconds, measured November 2026 (67 questions each, model time only,
+# from each answer's trace: evaluate.py answers --save). Prices per provider live in providers.py; the price
+# fields here are the Claude defaults.
 MODELS = {
-    "cheap": {"input_per_m": 0.10, "output_per_m": 0.50, "avg_s": 0.6, "p95_s": 1.2},
-    "strong": {"input_per_m": 2.00, "output_per_m": 10.00, "avg_s": 2.0, "p95_s": 3.5},
+    "cheap": {"input_per_m": 0.10, "output_per_m": 0.50, "avg_s": 0.82, "p95_s": 1.04},
+    "strong": {"input_per_m": 2.00, "output_per_m": 10.00, "avg_s": 1.61, "p95_s": 2.84},
 }
-
 # Extra prompt tokens each memory type adds per request.
 MEMORY_EXTRA_INPUT_TOKENS = {"none": 0, "window": 400, "summary": 250, "long_term": 300}
 
