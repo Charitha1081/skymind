@@ -22,6 +22,6 @@ jobs:
       - name: Test suites
         run: python tests/run_all.py
       - name: Search recall floor
-        run: python evaluate_search.py -min-recall 0.88
+        run: python evaluate_search.py --min-recall 0.88
       - name: Routing check
         run: python evaluate.py routing
