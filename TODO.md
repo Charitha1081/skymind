@@ -9,18 +9,19 @@ Suggested order: 1 → 2 → 4 → 5 → 9 → 7 → 8 → 6 → 3 → 10 → 12
 - [x] The sample company is now **Fernleaf Software** (made up): a support assistant and a code reviewer. Acme Outdoor Gear stays as a hidden second company for the isolation tests.
 - [x] The pages, README, comments, tests and evaluation questions were updated. The old measured numbers were removed because they came from the old sample.
 - [x] Every test suite passes (`python tests/run_all.py`).
-- [ ] On the live site: open `/admin` and delete the old `unt-helper`, `unt-code-reviewer` and any `unt-helper-xxxx` bots. The Fernleaf samples appear after the next restart.
+- [x] On the live site: open `/admin` and delete the old `unt-helper`, `unt-code-reviewer` and any `unt-helper-xxxx` bots. The Fernleaf samples appear after the next restart.
 
 ## Phase 1: Finish the measurements
+  - Done: cheap 0.82 s avg / 1.04 s p95, strong 1.61 s / 2.84 s (model time, 67 questions). Traffic assumptions are still placeholders: measure them with `loadtest.py`.
 
 The code for all of this exists; it has never been run with real API keys.
 
-- [ ] **1. Score hybrid vs BM25 vs keyword search, and pick the default on evidence.**
+- [x] **1. Score hybrid vs BM25 vs keyword search, and pick the default on evidence.**
   - Search only, free: `python evaluate.py search`. Add `GEMINI_API_KEY` to include hybrid, and `--tune` to tune its threshold.
   - Full answers: `python evaluate.py answers --url <your-service> --providers anthropic --search keyword,bm25,hybrid --pace 4 --save results.json`
   - Then set `SEARCH_METHOD` in `settings.py` to the winner and write down why.
   - Today (offline, 60 questions): keyword 93% / bm25 92% recall@3; bm25 handles off-topic questions far better (71% vs 29%). Hybrid not measured yet.
-- [ ] **2. Measure model latency and replace the planner's placeholders.**
+- [x] **2. Measure model latency and replace the planner's placeholders.**
   - Run the answers evaluation with a real key and read average and p95 time per model (cheap and strong).
   - Put them in `planner.py` (the model latency table near line 36, marked "placeholders").
   - Remove the "All figures use placeholder assumptions" note (near line 190) once the traffic assumptions are measured too (`loadtest.py`).
