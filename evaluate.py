@@ -343,6 +343,7 @@ async def eval_answers(qs, base, provider_list, routings, searches, pace, min_ac
                            "refuse": bool(x["q"].get("refuse")), "question": x["q"]["q"], "correct": bool(x["ok"]),
                            "tier": x["data"].get("tier"), "model": x["data"].get("model"),
                            "route_reason": x["data"].get("route_reason"), "ms": round(x["ms"]),
+                           "model_ms": next((t["ms"] for t in x["data"].get("trace", []) if t["step"] == "Model"), None),
                            "cost_usd": x["data"].get("cost_usd"), "reply": x["data"].get("reply", x["data"].get("error"))}
                           for x in res]
                 s = summarize(name, res)
