@@ -56,3 +56,72 @@
 - {bot: kestrel, refuse: true, level: easy, q: "Does the company offer relocation assistance to employees transferring between warehouse locations?"}
 - {bot: kestrel, refuse: true, level: easy, q: "Will Kestrel pay for an employee's professional certification exam and renewal fees?"}
 - {bot: kestrel, refuse: true, level: hard, q: "If my manager gives me an Outstanding rating, am I guaranteed a specific percentage increase in my salary?"}
+
+# ---- fernleaf: 57 questions imported from fernleaf_heldout.jsonl
+- {bot: fernleaf, level: easy, section: "About Fernleaf", q: "what kind of work can i manage with Fernleaf?", must: ["projects", "time", "invoices"]}
+- {bot: fernleaf, level: easy, section: "About Fernleaf", q: "Who started Fernleaf Software, and when was it founded?", must: ["maya chen", "arjun patel", "2021"]}
+- {bot: fernleaf, level: easy, section: "Product modules", q: "How many different tools or modules does Fernleaf offer?", must: ["14"]}
+- {bot: fernleaf, level: easy, section: "How to set up a new workspace", q: "I'm setting up Fernleaf for my agency. Where do I go to add my coworkers?", must: ["settings", "members", "invite"]}
+- {bot: fernleaf, level: easy, section: "Pricing plans", q: "How much does the Team subscription cost if I pay month by month?", must: ["$15", "per user", "monthly"]}
+- {bot: fernleaf, level: easy, section: "Free trial", q: "Do I need to enter my credit card details to try Fernleaf?", must: ["14-day", "no credit card"]}
+- {bot: fernleaf, level: easy, section: "Integrations", q: "Can I connect my QuickBooks account to Fernleaf?", must: ["quickbooks"]}
+- {bot: fernleaf, level: easy, section: "Mobile apps", q: "Is there a Fernleaf app I can use on my Android phone?", must: ["android", "android 11", "free"]}
+- {bot: fernleaf, level: easy, section: "Team roles and permissions", q: "Who is allowed to change billing and subscription settings in a workspace?", must: ["owner", "billing"]}
+- {bot: fernleaf, level: easy, section: "Storage limits", q: "how much space do i get to upload files on the Starter plan", must: ["2 gb", "starter"]}
+- {bot: fernleaf, level: easy, section: "Data security and compliance", q: "What encryption does Fernleaf use to protect stored information?", must: ["aes-256"]}
+- {bot: fernleaf, level: easy, section: "Uptime and status page", q: "Where can I find the company's upcoming product announcements and maintenance updates?", must: ["status page", "incidents", "planned maintenance"]}
+- {bot: fernleaf, level: hard, section: "Pricing plans", q: "If my company has 5 people using the Team plan and we choose yearly billing, what is the monthly equivalent for all five users?", must: ["$60", "5", "yearly"]}
+- {bot: fernleaf, level: hard, section: "Discounts for startups and nonprofits", q: "We're a registered nonprofit considering the Business plan. What percentage discount can we get, and what would the discounted per-user monthly price be with yearly billing?", must: ["50 percent", "$12", "yearly"]}
+- {bot: fernleaf, level: hard, section: "Cancelling a subscription", q: "I cancelled my yearly subscription 20 days after paying. Will I get my money back, and can my team continue using the paid features until the billing period ends?", must: ["30 days", "full refund", "end of the period"]}
+- {bot: fernleaf, refuse: true, level: easy, q: "Can I use Fernleaf to manage projects for a company with 350 employees, and what would the subscription cost?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "Does Fernleaf offer a discount if I pay for three years upfront?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "Does Fernleaf have a Windows desktop application that works without an internet connection?"}
+- {bot: fernleaf, refuse: true, level: hard, q: "Is Fernleaf certified for HIPAA compliance, and can I store patient medical records on the platform?"}
+- {bot: fernleaf, level: easy, section: "Pricing contact", q: "How long does Fernleaf take to respond when I contact the sales team about pricing?", must: ["one business day", "9 am", "6 pm"]}
+- {bot: fernleaf, level: easy, section: "Billing and invoices", q: "Can I pay my Business subscription using a bank transfer?", must: ["bank transfer", "yearly business"]}
+- {bot: fernleaf, level: easy, section: "Upgrading or downgrading", q: "I want to move from Starter to Business today. Will I have to wait until next month to use the new features?", must: ["immediately", "upgrade"]}
+- {bot: fernleaf, level: easy, section: "Free trial", q: "What happens to my workspace if I don't select a paid subscription after the trial?", must: ["starter", "no data is deleted"]}
+- {bot: fernleaf, level: easy, section: "Billing and invoices", q: "Where can I download copies of the invoices Fernleaf sends me?", must: ["settings", "billing"]}
+- {bot: fernleaf, level: easy, section: "Office locations", q: "Does Fernleaf have an office outside the United States?", must: ["toronto", "canada"]}
+- {bot: fernleaf, level: easy, section: "Release notes", q: "How frequently does Fernleaf release new updates?", must: ["two weeks"]}
+- {bot: fernleaf, level: easy, section: "Team roles and permissions", q: "Can my clients access only the projects I share with them without paying for separate accounts?", must: ["guests", "shared", "free"]}
+- {bot: fernleaf, level: easy, section: "API and developer docs", q: "Where do I create an API key for my Fernleaf workspace?", must: ["settings", "developer"]}
+- {bot: fernleaf, level: easy, section: "Storage limits", q: "What's the maximum size of a single document or file I can upload?", must: ["250 mb"]}
+- {bot: fernleaf, level: easy, section: "Data export and backups", q: "Can I restore a project after accidentally deleting it?", must: ["trash", "30 days"]}
+- {bot: fernleaf, level: easy, section: "Login, passwords and SSO", q: "How long does my password reset link remain valid after I receive it?", must: ["1 hour", "expires"]}
+- {bot: fernleaf, level: easy, section: "Help center and webinars", q: "When can I attend Fernleaf's free online training session each week?", must: ["45-minute", "tuesday", "11 am"]}
+- {bot: fernleaf, level: easy, section: "Fernleaf Summit, November 16, 2026", q: "Where is Fernleaf Summit being held, and what time does it finish?", must: ["harbor hall", "austin convention center", "5:00 pm"]}
+- {bot: fernleaf, level: easy, section: "Customer support hours", q: "I have a Business subscription and need help quickly. How soon should I expect the first response?", must: ["4 hours", "priority support"]}
+- {bot: fernleaf, level: easy, section: "Referral program", q: "If I refer another company and they subscribe to a paid plan, what do both of us receive?", must: ["one month", "current plan free"]}
+- {bot: fernleaf, level: hard, section: "Storage limits", q: "Our workspace is on the Team plan and we need to store 85 GB of files. Will that fit, and how much room will remain?", must: ["100 gb", "15 gb"]}
+- {bot: fernleaf, level: hard, section: "Enterprise plans", q: "My company has 150 employees. Can we request a custom Enterprise agreement, and does the document say what it will cost?", must: ["more than 200", "custom pricing"]}
+- {bot: fernleaf, level: easy, section: "Company size and customers", q: "How many customer teams are currently using Fernleaf, and in how many countries is it available?", must: ["3,200", "41 countries"]}
+- {bot: fernleaf, level: easy, section: "Billing and invoices", q: "What's the name of the person who handles workspace billing?", must: ["billing owner"]}
+- {bot: fernleaf, level: easy, section: "Login, passwords and SSO", q: "Can I make my workspace more secure by requiring everyone to use two-factor authentication?", must: ["admins", "two-factor authentication"]}
+- {bot: fernleaf, level: easy, section: "Login, passwords and SSO", q: "Which sign-in services can Business customers connect for single sign-on?", must: ["google workspace", "microsoft entra id", "okta"]}
+- {bot: fernleaf, level: easy, section: "Data security and compliance", q: "Does the company have a security compliance report that customers can request?", must: ["soc 2 type ii", "on request"]}
+- {bot: fernleaf, level: easy, section: "Data security and compliance", q: "Where does Fernleaf keep its customer information?", must: ["united states", "european union", "business plan"]}
+- {bot: fernleaf, level: easy, section: "Privacy and GDPR", q: "Can Fernleaf use my company's information to train its AI models?", must: ["never", "customer data", "ai models"]}
+- {bot: fernleaf, level: easy, section: "Accessibility", q: "Does Fernleaf try to make its website accessible for people using screen readers?", must: ["wcag 2.2", "level aa", "screen readers"]}
+- {bot: fernleaf, level: easy, section: "Accessibility", q: "I noticed an accessibility issue while using the app. Who should I tell?", must: ["accessibility", "support"]}
+- {bot: fernleaf, level: easy, section: "Release notes", q: "What are some features the company recently added to Fernleaf?", must: ["recurring tasks", "invoice reminders", "dark theme"]}
+- {bot: fernleaf, level: easy, section: "Partner program", q: "Can agencies that manage Fernleaf for their clients earn money through a partner arrangement?", must: ["partner program", "20 percent"]}
+- {bot: fernleaf, level: easy, section: "Release notes", q: "Where can I find the latest release information without contacting support?", must: ["what's new", "help center"]}
+- {bot: fernleaf, level: easy, section: "API and developer docs", q: "What is the maximum number of API calls my workspace can make in one minute?", must: ["100", "per minute", "per workspace"]}
+- {bot: fernleaf, level: easy, section: "Data export and backups", q: "Can I download all my workspace information before closing my account?", must: ["admins", "csv", "json"]}
+- {bot: fernleaf, level: easy, section: "Data export and backups", q: "How long does Fernleaf keep its automatic backups?", must: ["35 days"]}
+- {bot: fernleaf, level: easy, section: "Discounts for startups and nonprofits", q: "I'm a student with a school email. Do I have to pay for the Team plan?", must: ["students", "teachers", "free"]}
+- {bot: fernleaf, level: hard, section: "Discounts for startups and nonprofits", q: "My startup is 18 months old and has received $800,000 in funding. Would it qualify for the startup discount, and how long would that discount last?", must: ["less than two years", "under $1 million", "30 percent"]}
+- {bot: fernleaf, level: hard, section: "Pricing plans", q: "My team has 4 people and wants to use the free Starter subscription. How many additional users can join, and how many projects can we create?", must: ["3 users", "5 projects"]}
+
+# ---- fernleaf: 10 questions imported from fernleaf_heldout_extra.jsonl
+- {bot: fernleaf, refuse: true, level: easy, q: "Can I schedule automatic weekly email reports to be sent to my clients every Monday morning?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "Does Fernleaf let me customize invoices with my company logo, colors and payment terms?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "Can I import all my existing projects and customer information from Asana into Fernleaf?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "Is there a limit to how many team members can work on the same project at once?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "Can I get notifications on my phone whenever someone assigns me a new task or leaves a comment?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "Does Fernleaf support multiple currencies when creating invoices for international clients?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "If I accidentally invite someone using the wrong email address, can I remove them and transfer their tasks to another person?"}
+- {bot: fernleaf, refuse: true, level: easy, q: "Can I customize the appearance of my client portal with my own company branding and domain name?"}
+- {bot: fernleaf, refuse: true, level: hard, q: "Our agency needs to migrate several years of project history from another platform. Does Fernleaf offer free migration assistance, and how long does the process usually take?"}
+- {bot: fernleaf, refuse: true, level: hard, q: "If Fernleaf experiences an outage and our team cannot access projects, does the company compensate customers or extend their subscriptions for the downtime?"}
