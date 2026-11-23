@@ -11,42 +11,30 @@ Suggested order: 1 → 2 → 4 → 5 → 9 → 7 → 8 → 6 → 3 → 10 → 12
 - [x] Every test suite passes (`python tests/run_all.py`).
 - [x] On the live site: open `/admin` and delete the old `unt-helper`, `unt-code-reviewer` and any `unt-helper-xxxx` bots. The Fernleaf samples appear after the next restart.
 
-## Phase 1: Finish the measurements
-  - Done: cheap 0.82 s avg / 1.04 s p95, strong 1.61 s / 2.84 s (model time, 67 questions). Traffic assumptions are still placeholders: measure them with `loadtest.py`.
-
-The code for all of this exists; it has never been run with real API keys.
+## Phase 1: Finish the measurements ✅ done
 
 - [x] **1. Score hybrid vs BM25 vs keyword search, and pick the default on evidence.**
-  - Search only, free: `python evaluate.py search`. Add `GEMINI_API_KEY` to include hybrid, and `--tune` to tune its threshold.
-  - Full answers: `python evaluate.py answers --url <your-service> --providers anthropic --search keyword,bm25,hybrid --pace 4 --save results.json`
-  - Then set `SEARCH_METHOD` in `settings.py` to the winner and write down why.
-  - Today (offline, 60 questions): keyword 93% / bm25 92% recall@3; bm25 handles off-topic questions far better (71% vs 29%). Hybrid not measured yet.
+  - Done (116 questions, 3 corpora): hybrid 98% recall@3, bm25 90%, keyword 92%; hybrid and bm25 both handle 8/11 off-topic questions. Hybrid is the default whenever `GEMINI_API_KEY` is set (`settings.py`); `EMBED_MIN_SIM = 0.62` confirmed.
+  - Still to do: add `GEMINI_API_KEY` on Render so the live site uses hybrid.
 - [x] **2. Measure model latency and replace the planner's placeholders.**
-  - Run the answers evaluation with a real key and read average and p95 time per model (cheap and strong).
-  - Put them in `planner.py` (the model latency table near line 36, marked "placeholders").
-  - Remove the "All figures use placeholder assumptions" note (near line 190) once the traffic assumptions are measured too (`loadtest.py`).
-- [ ] **3. Raise the CI recall floor to match.**
-  - CI exists now: `.github/workflows/tests.yml` runs every test suite, then `evaluate_search.py --min-recall 0.90`.
-  - Recall@3 (BM25, all corpora) is 89.4% since the harder Kestrel handbook was added, so the floor is 0.88. Each time search improves, raise the floor to just under the new number.
+  - Done (116 questions, model time from each answer's trace): cheap 0.87 s avg / 1.18 s p95, strong 1.66 s / 3.51 s, now in `planner.py`.
+  - Still to do: the traffic numbers in `ASSUMPTIONS` are placeholders. Measure them with `loadtest.py`, then remove the "placeholder assumptions" note in `planner.py`.
+- [x] **3. Keep the CI recall floor matched to the measured number.**
+  - `.github/workflows/tests.yml` runs every test suite, then `evaluate_search.py --min-recall 0.88` (BM25 recall@3 is 89.4% over all corpora; CI has no Gemini key, so it measures BM25). Raise the floor to just under the new number whenever search improves.
 
 ## Phase 2: Make the evaluation mean something
 
-- [x] **4. A second corpus** (the highest-value item). Every number today could be an artifact of one document set.
-  - Done: Kestrel Logistics, a 30-section employee handbook (`examples.py`, not deployed), with 49 tuning questions in `questions.yaml`. BM25 recall@3 is 97% on Fernleaf but 87% on Kestrel. Next: measure hybrid and Claude answers on it.
-  - Pick a document set that is different in kind: an HR policy handbook, a clinic FAQ, or an API reference. Make it 30+ sections.
-  - Add it to `examples.py` as a third company (not deployed, like Acme).
-- [ ] **5. Question sets for the second corpus, with the same held-out discipline.**
-  - Three files per corpus: a tuning set (`questions.yaml`), a held-out set (`questions_heldout.yaml`) and a blind set (`questions_blind.yaml`).
-  - Never tune search or the router on the held-out or blind sets.
-  - Have someone who hasn't seen the code write the blind set.
-  - `evaluate_search.py` picks up these files automatically once they exist.
-  - Fernleaf needs its held-out and blind sets too. The routing score (100%) only counts once it is measured on questions written without knowing the router.
-- [ ] **6. Grow to ~300–400 scored questions** across both corpora and all sets. Mix easy, hard, refusals (answer not in the documents) and reworded questions ("Can I use it on my phone?").
-- [ ] **7. Error taxonomy: turn the miss list into a work list.**
-  - Label every miss: search missed it / wrong section ranked first / model ignored the context / wrongly refused / made something up / routing mistake.
-  - Count each label. The biggest count is the next thing to fix.
-- [ ] **8. Report per corpus, not pooled.** Make `evaluate.py` and `evaluate_search.py` print one table per corpus (`evaluate_search.py fernleaf` already filters by bot).
-- [ ] **9. Score answer accuracy on the held-out sets.** Recall is scored on every set, but accuracy only on `questions.yaml`. Run `evaluate.py answers --questions <set>` on each held-out and blind set and report them.
+- [x] **4. A second corpus.** Kestrel Logistics, a 30-section employee handbook (`examples.py`, not deployed). BM25 recall@3 is 97% on Fernleaf but 87% on Kestrel, so one corpus had flattered search.
+- [ ] **5. Held-out and blind question sets** (the most important open item). Everything measured so far comes from one tuning set that was used to make decisions.
+  - Guide for whoever writes them: [`docs/writing-questions.md`](docs/writing-questions.md).
+  - First: a Kestrel held-out set (~40 answerable, ~12 should refuse), written **before** the second-look fix is measured.
+  - Then: a blind set for each corpus, by someone who has never seen the code or the section titles.
+  - `evaluate_search.py` picks up `questions_heldout.yaml` and `questions_blind.yaml` automatically.
+- [ ] **6. Grow to ~300 scored questions.** Targets per corpus are in `docs/writing-questions.md`. Refusals are the thinnest part: only 11 today, so each one is worth 9 points. Add ~8 more to the tuning set per corpus.
+- [x] **7. Error taxonomy.** First pass done: [`docs/error-taxonomy.md`](docs/error-taxonomy.md). 7 misses = 5 search misses + 2 grader errors; the model never ignored a section it was shown. It led to the topic-guided second look and better refusal detection.
+  - Next: rerun `evaluate.py answers` (cheap model is enough, about $0.05) to measure how many search misses the fix closes, and relabel.
+- [x] **8. Report per corpus, not pooled.** `evaluate.py answers` and `evaluate_search.py` now print a table per corpus, plus model time from the trace.
+- [ ] **9. Score answer accuracy on the held-out sets.** Needs item 5. Then run `evaluate.py answers --questions questions_heldout.yaml` and report it next to the tuning set.
 
 ## Phase 3: Make it legible
 

@@ -274,7 +274,17 @@ def summarize(name, res):
     answered = len(ok_lat)
     strong = sum(1 for r in res if r["data"].get("tier") == "strong")
     p95 = ok_lat[min(len(ok_lat) - 1, math.ceil(0.95 * len(ok_lat)) - 1)] if ok_lat else 0
+    # model time alone, from each answer's trace: no network travel, no server wake-up (what the planner needs)
+    model_ms = sorted(t["ms"] for r in res for t in r["data"].get("trace", []) if t.get("step") == "Model")
+    by_bot: dict[str, list[int]] = {}
+    for r in res:
+        b = by_bot.setdefault(r["q"]["bot"], [0, 0])
+        b[0] += bool(r["ok"])
+        b[1] += 1
     return {
+        "by_bot": by_bot,
+        "model_avg_s": sum(model_ms) / len(model_ms) / 1000 if model_ms else 0,
+        "model_p95_s": model_ms[min(len(model_ms) - 1, math.ceil(0.95 * len(model_ms)) - 1)] / 1000 if model_ms else 0,
         "name": name,
         "accuracy": sum(r["ok"] for r in answerable) / max(len(answerable), 1),
         "refusals": sum(r["ok"] for r in refuse) / max(len(refuse), 1),
@@ -362,6 +372,12 @@ async def eval_answers(qs, base, provider_list, routings, searches, pace, min_ac
            table(["Setup", "Models", "Accuracy", "Refusals", "Overall", "Avg ms", "p95 ms", "Strong share", "$ per 1,000 answers", "Errors"],
                  [[r["name"], r["model"], pct(r["accuracy"]), pct(r["refusals"]), pct(r["overall"]), f"{r['avg_ms']:.0f}",
                    f"{r['p95_ms']:.0f}", pct(r["strong_share"]), f"{r['cost_per_1k']:.4f}", r["errors"]] for r in rows])]
+    bots = sorted({b for r in rows for b in r["by_bot"]})
+    out += ["", "Per corpus (correct / asked, refusal questions included). Report these, not only the pooled numbers:", "",
+            table(["Setup"] + bots, [[r["name"]] + [("{}/{}".format(*r["by_bot"][b]) if b in r["by_bot"] else "—") for b in bots]
+                                    for r in rows]),
+            "", "Model time from each answer's trace (no network travel or server wake-up; use these in planner.py):", "",
+            table(["Setup", "Avg s", "p95 s"], [[r["name"], f"{r['model_avg_s']:.2f}", f"{r['model_p95_s']:.2f}"] for r in rows])]
     passing = [r for r in rows if r["overall"] >= min_accuracy and r["errors"] == 0 and not r["name"].startswith("mock")]
     out.append("")
     if passing:

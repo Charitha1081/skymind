@@ -38,6 +38,10 @@ REFUSAL_MARKERS = (
     "can't tell you", "cannot tell you", "documents i have don't", "documents don't list", "documents don't include",
     "documents don't say", "documents don't mention", "don't list", "do not list", "doesn't list", "isn't listed",
     "not listed in", "don't mention", "doesn't mention", "don't specify", "doesn't specify",
+    # the prompt tells the model to name a topic it can help with instead of answering from its title,
+    # so a reply that invites the question again is a refusal too ("please ask your question about
+    # bereavement leave", "ask me about Pay and payroll"). Missing these skipped the second look.
+    "please ask your question", "ask me about", "try asking", "you could ask me",
 )
 CHECK_CHARS = 300  # how far into an answer to look for these phrases (streaming holds back this much)
 

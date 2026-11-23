@@ -50,6 +50,7 @@ def main(only: str | None = None, min_recall: float = 0.0) -> int:
         indexes[e["key"]] = (knowledge.build_index(ch), ch)
 
     rows, misses = [], []
+    per_bot: dict[str, list[int]] = {}  # bot -> [hit, answerable, ok, refuse], over every set
     tot = {"hit": 0, "ans": 0, "ok": 0, "ref": 0}
     for name, (path, note) in SETS.items():
         if not os.path.exists(path):
@@ -59,19 +60,24 @@ def main(only: str | None = None, min_recall: float = 0.0) -> int:
             if only and it.get("bot") != only:
                 continue
             index, chunks = indexes[it["bot"]]
+            pb = per_bot.setdefault(it["bot"], [0, 0, 0, 0])
             found = [c["title"].split(" (part")[0]
                      for c in knowledge.retrieve(index, chunks, it["q"], method="bm25")]
             want = section_of(it)
             if it.get("refuse"):
                 ref += 1
+                pb[3] += 1
                 if not found or (want is not None and want in found):
                     ok += 1
+                    pb[2] += 1
                 else:
                     misses.append((name, "answered an unanswerable question", it["q"], found))
             else:
                 ans += 1
+                pb[1] += 1
                 if want in found:
                     hit += 1
+                    pb[0] += 1
                 else:
                     misses.append((name, f"missed {want!r}", it["q"], found))
         rows.append((name, note, hit, ans, ok, ref))
@@ -86,7 +92,17 @@ def main(only: str | None = None, min_recall: float = 0.0) -> int:
         f = f"{ok}/{ref}" if ref else "—"
         print(f"| {name} | {note} | {r} | {f} |")
     h, a, o, rf = tot["hit"], tot["ans"], tot["ok"], tot["ref"]
+    if not a:
+        print(f"\nNo questions found{who}. Bot names: " + ", ".join(sorted(indexes)))
+        return 1
     print(f"| **all** | | **{h}/{a} = {h / a:.1%}** | **{o}/{rf}** |")
+
+    if len(per_bot) > 1:
+        print("\n## Per corpus\n")
+        print("| Bot | recall@3 | Unanswerable handled |")
+        print("|---|---|---|")
+        for bot, (ph, pa, po, pr) in sorted(per_bot.items()):
+            print(f"| {bot} | {ph}/{pa} = {ph / pa:.0%} | {po}/{pr} |" if pa else f"| {bot} | — | {po}/{pr} |")
 
     if misses:
         print("\nEvery question search got wrong:\n")

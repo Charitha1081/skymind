@@ -73,19 +73,19 @@ python evaluate_search.py                                   # search recall on e
 
 ### Measured results (November 2026)
 
-Search on the first 67 questions (Fernleaf and Acme): 60 with a section to find and 7 that should find nothing:
+All 116 questions, three made-up companies, two kinds of corpus: 105 with a section to find and 11 that should find nothing.
+
+**Search** (`evaluate.py search --tune`, offline apart from Gemini embeddings for hybrid):
 
 | Method | Right section first | Right section in top 3 | Finds nothing when it should |
 |---|---|---|---|
-| keyword (IDF overlap) | 90% | 93% | 29% |
-| bm25 (default) | 88% | 92% | 71% |
-| hybrid (bm25 + embeddings) | 92% | 97% | 71% |
+| keyword (IDF overlap) | 87% | 92% | 36% (4/11) |
+| bm25 | 85% | 90% | 73% (8/11) |
+| **hybrid (bm25 + embeddings)** | **93%** | **98%** | **73% (8/11)** |
 
-Hybrid finds the right section more often (97% vs 92% in the top 3) and refuses off-topic questions as well as BM25, so it is the default whenever GEMINI_API_KEY is set. The difference is 3 of 60 questions, and the similarity threshold (EMBED_MIN_SIM = 0.62, unchanged) was tuned on these same questions, so it still needs confirming on a held-out set.
+Hybrid finds the right section more often and refuses off-topic questions as well as BM25, so it is the default whenever GEMINI_API_KEY is set. Its advantage grew from 5 points on the product FAQ alone to 8 points once the handbook was added: it fixed every handbook miss caused by different wording ("paid" vs "Pay", "grandmother" vs "grandparent", "stressed" vs "counseling", "shoes" vs "steel-toe boots", "apartment" vs "home"). The similarity threshold `EMBED_MIN_SIM = 0.62` is still the best balance (0.55 finds one more answer but refuses only 36% of off-topic questions). Only 11 questions test refusals, so each one is worth 9 points.
 
-BM25 refuses off-topic questions far more often than keyword search. Its misses are mostly questions worded differently from the documents ("How can I talk to a person?" vs "Customer support", "money back" vs "refund"), which is what hybrid search and the second look are for.
-
-Search per corpus, BM25, all 116 questions (`python evaluate_search.py <bot>`):
+BM25 per corpus (`python evaluate_search.py <bot>`):
 
 | Corpus | Kind | Right section in top 3 | Finds nothing when it should |
 |---|---|---|---|
@@ -94,20 +94,20 @@ Search per corpus, BM25, all 116 questions (`python evaluate_search.py <bot>`):
 | Kestrel | long policy handbook | 39/45 = 87% | 3/4 |
 | **all** | | **93/104 = 89.4%** | **9/12** |
 
-The second corpus changed the picture: on one product FAQ, word search looked better than it is. On the handbook it misses questions that use different forms or words from the policy text: "How often are we *paid*?" against a section about "Pay", "grandmother" against "grandparent", "stressed" against "counseling", "shoes" against "steel-toe boots". Hybrid search on the handbook has not been measured yet (it needs GEMINI_API_KEY).
+On one product FAQ, word search looked better than it is; the handbook is what exposed it.
 
-Routing: the router agrees with the easy/hard labels on all 104 labelled questions. Treat that as a sanity check, not a result: these questions were written by people who knew how the router works. The honest test is a held-out set written without looking at the code (see `TODO.md`).
+**Answers with Claude** (all 116 questions, BM25 search, document answers only, website lookup off, one run each):
 
-### Answers with real models (Claude, November 2026)
+| Setup | Fernleaf | Acme | Kestrel | Correct refusals | Model time avg / p95 | $ per 1,000 answers |
+|---|---|---|---|---|---|---|
+| cheap: claude-haiku-5-5 | 41/43 | 24/24 | 47/49 | 100% | 0.87 s / 1.18 s | 0.16 |
+| strong: claude-sonnet-5-5 | 41/43 | 24/24 | 48/49 | 100% | 1.66 s / 3.51 s | 4.42 |
 
-67 questions (`questions.yaml`), BM25 search, document answers only (website lookup off), one run each:
+The cheap model got 112 of 116 right and the strong one 113, at 1/27 of the price and half the time, so the cheap model is the recommended setting. The one difference is on the handbook, the first sign that rule-heavy questions may need the strong model, but it is one question. Model time comes from each answer's trace; whole-answer times measured from a laptop include network travel and a Render wake-up, so they are not reported here.
 
-| Setup | Accuracy | Correct refusals | Model time avg / p95 | Whole answer avg / p95 | $ per 1,000 answers |
-|---|---|---|---|---|---|
-| cheap: claude-haiku-5-5 | 97% | 100% | 0.82 s / 1.04 s | 1.1 s / 2.3 s | 0.16 |
-| strong: claude-sonnet-5-5 | 97% | 100% | 1.61 s / 2.84 s | 2.2 s / 5.0 s | 3.94 |
+Every miss is explained in [`docs/error-taxonomy.md`](docs/error-taxonomy.md): of 7 misses, 5 were search misses, 2 were the grader being too strict, and none was the model ignoring a section it was shown. The search misses led to the topic-guided second look (`orchestrator.py`, `named_topics`); its effect still has to be measured on the next run.
 
-The cheap model was as accurate as the strong one at 1/25 of the price and half the time, so it is the recommended setting for document questions. Model time comes from each answer's trace; whole-answer time was measured from a laptop to the hosted service, so it includes network travel. This is one run on one question set: re-check on the held-out sets (`TODO.md`, item 9) before treating it as settled. How the router was rebuilt after failing on new questions is written up in `docs/reversals.md`.
+Routing: the router agrees with the easy/hard labels on all 104 labelled questions. Treat that as a sanity check, not a result: these questions were written by people who knew how the router works. All numbers above come from one tuning set that was used to make decisions, so they need confirming on held-out and blind sets (see [`docs/writing-questions.md`](docs/writing-questions.md)). How the router was rebuilt after failing on new questions is in `docs/reversals.md`.
 
 To measure hybrid and tune its similarity threshold:
 
@@ -207,7 +207,7 @@ Thirteen suites, none of which touch the network or make paid calls:
 2. Route: easy questions go to the cheap model. A question goes to the strong model when it is long, contains code, or shows enough signs of difficulty, meaning it asks for reasoning, asks several things at once, or describes a situation with numbers to work through. The answer says why (`route_reason`).
 3. Budget guard: once a bot has used its monthly LLM budget, the strong model is paused and everything goes to the cheap model.
 4. Answer from the retrieved sections only. If the answer isn't in the documents, the bot says so.
-   - Second look: word search can miss a section that uses other words ("Can I use it on my phone?" vs "Mobile apps"). When the model says it has no answer, SkyMind gives it the six best sections with no minimum score and asks once more. A real answer replaces the refusal; otherwise the refusal stands and the question is logged. Turn it off with `SECOND_LOOK=false`.
+   - Second look: word search can miss a section that uses other words ("When do I get my paycheck?" vs "Pay and payroll"). When the model says it has no answer, SkyMind gives it the sections its refusal named from the topic list ("ask me about Pay and payroll"), then the best sections of a wider search, and asks once more. A real answer replaces the refusal; otherwise the refusal stands and the question is logged. Turn it off with `SECOND_LOOK=false`.
 5. Remember the recent messages of that conversation (memory is separate for each bot).
 6. Record latency, tokens, cost, and what the request would have cost on the strong model.
 7. Show its work: every answer carries a `trace` (checks, route, search, model, second look, website, save) with the time each step took. The chat page shows it under "How this answer was made".

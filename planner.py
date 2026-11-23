@@ -33,12 +33,12 @@ ASSUMPTIONS = {
     "overhead_s": 0.15,                 # time spent outside the LLM call
 }
 
-# Model tiers: average and p95 latency in seconds, measured November 2026 (67 questions each, model time only,
-# from each answer's trace: evaluate.py answers --save). Prices per provider live in providers.py; the price
-# fields here are the Claude defaults.
+# Model tiers: average and p95 latency in seconds, measured November 2026 (116 questions each over two corpora,
+# model time only, from each answer's trace: evaluate.py answers --save). Prices per provider live in
+# providers.py; the price fields here are the Claude defaults.
 MODELS = {
-    "cheap": {"input_per_m": 0.10, "output_per_m": 0.50, "avg_s": 0.82, "p95_s": 1.04},
-    "strong": {"input_per_m": 2.00, "output_per_m": 10.00, "avg_s": 1.61, "p95_s": 2.84},
+    "cheap": {"input_per_m": 0.10, "output_per_m": 0.50, "avg_s": 0.87, "p95_s": 1.18},
+    "strong": {"input_per_m": 2.00, "output_per_m": 10.00, "avg_s": 1.66, "p95_s": 3.51},
 }
 # Extra prompt tokens each memory type adds per request.
 MEMORY_EXTRA_INPUT_TOKENS = {"none": 0, "window": 400, "summary": 250, "long_term": 300}

@@ -43,7 +43,7 @@
 - {bot: fernleaf, level: easy, section: Office locations, q: "What is the address of the head office?", must: ["500 congress"]}
 - {bot: fernleaf, level: hard, section: How to set up a new workspace, q: "Explain the steps to set up a new workspace and invite my team.", must: ["template", "invite"]}
 - {bot: fernleaf, level: hard, section: Pricing plans, q: "Compare the Team plan billed yearly and billed monthly.", must: ["12", "15"]}
-- {bot: fernleaf, level: hard, section: Upgrading or downgrading, q: "Why does a downgrade not take effect right away, and what happens when I upgrade instead?", must: ["end of the current billing period|end of the billing period", "prorated"]}
+- {bot: fernleaf, level: hard, section: Upgrading or downgrading, q: "Why does a downgrade not take effect right away, and what happens when I upgrade instead?", must: ["billing period", "prorated"]}
 - {bot: fernleaf, level: hard, section: Pricing plans, q: "We are a team of 10 on the Team plan billed yearly. How much do we pay per month in total?", must: ["120"]}
 - {bot: fernleaf, refuse: true, level: easy, section: Enterprise plans, q: "How much does the Enterprise plan cost?"}
 - {bot: fernleaf, refuse: true, level: easy, q: "What is the capital of France?"}
