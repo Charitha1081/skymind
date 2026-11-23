@@ -58,15 +58,25 @@ def load_questions(path: str = QUESTIONS_FILE) -> list[dict]:
     return qs
 
 
+# Same meaning, different spelling. The held-out run marked two right answers wrong: "4%" against a required
+# "4 percent", and "doesn't need" against "does not need". Both sides are rewritten the same way before comparing.
+_CONTRACTIONS = {"can't": "can not", "cannot": "can not", "won't": "will not", "shan't": "shall not"}
+
+
 def normalize(text: str) -> str:
     text = text.lower().replace("’", "'").replace("‑", "-")
-    return re.sub(r"(?<=\d),(?=\d{3})", "", text)  # 43,567 -> 43567
+    text = re.sub(r"(?<=\d),(?=\d{3})", "", text)  # 43,567 -> 43567
+    text = re.sub(r"\s*(?:percent|per cent)\b", "%", text)  # 4 percent, 4 per cent -> 4%
+    for short, full in _CONTRACTIONS.items():
+        text = text.replace(short, full)
+    text = re.sub(r"\b(\w+)n't\b", r"\1 not", text)  # doesn't -> does not, isn't -> is not
+    return re.sub(r"\s+", " ", text)
 
 
 def grade(q: dict, answer: str) -> bool:
     a = normalize(answer)
     if q.get("refuse"):
-        return any(p in a for p in REFUSAL_PHRASES)
+        return any(normalize(p) in a for p in REFUSAL_PHRASES)
     return all(any(normalize(alt) in a for alt in str(group).split("|")) for group in q["must"])
 
 

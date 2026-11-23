@@ -218,6 +218,11 @@ def build_system_prompt(bot: dict, sources: list[dict]) -> str:
     )
 
 
+# What the user sees if the model keeps returning no text. It counts as a refusal (improve.REFUSAL_MARKERS),
+# so it never replaces a real answer in the second look and the question is logged as unanswered.
+EMPTY_REPLY = "Sorry, I couldn't put an answer together. Please try rephrasing."
+
+
 async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sources: list[dict]) -> dict:
     system = build_system_prompt(bot, sources)
     messages = history + [{"role": "user", "content": message}]
@@ -258,8 +263,13 @@ async def call_llm(bot: dict, history: list[dict], message: str, tier: str, sour
             await asyncio.sleep(0.5 * (attempt + 1))
             continue
         text = result["text"].strip()
+        if not text and attempt < len(plan) - 1:
+            # An empty reply is a failed call, not an answer: ask again (found on the held-out set, where an
+            # empty reply reached the user). The tokens of the empty call are not counted; it produced nothing.
+            log.warning("LLM returned an empty reply (%s %s, attempt %d); asking again", provider, use_tier, attempt + 1)
+            continue
         return {
-            "text": text or "Sorry, I couldn't put an answer together. Please try rephrasing.",
+            "text": text or EMPTY_REPLY,
             "model": result["model"],
             "tier": use_tier,
             "fallback": use_tier != tier,
@@ -541,7 +551,10 @@ async def stream_llm(bot: dict, history: list[dict], message: str, tier: str, so
                 yield "text", value
             elif kind == "done":
                 text = "".join(pieces).strip()
-                yield "done", {"text": text or "Sorry, I couldn't put an answer together. Please try rephrasing.",
+                if not text:  # nothing was written: fall through to the normal call, which asks again
+                    log.warning("Streamed reply was empty (%s %s); asking again", provider, tier)
+                    break
+                yield "done", {"text": text,
                                "model": value["model"], "tier": tier, "streamed": True, "first_token_ms": first,
                                "input_tokens": value["input_tokens"] or router.estimate_tokens(system),
                                "output_tokens": value["output_tokens"] or router.estimate_tokens(text)}

@@ -99,3 +99,10 @@ Questions written by ChatGPT from the handbook text alone (no code, no tuning qu
 - **Search cannot filter on-topic unanswerable questions** (0/11 returned nothing), but the model refused all 11 correctly.
 - **An empty model reply reached the user.** This is a reliability defect, not a quality miss; it belongs to the Reliability track.
 - **The grader is too literal about symbols and contractions** ("%" vs "percent", "doesn't" vs "does not"). Fixing the grader is allowed (it is not tuning the system), but the held-out figures above stay as measured.
+
+### Fixed after run 3 (defects, not tuning)
+
+1. **Empty replies** (`orchestrator.py`). An empty reply from the model was never retried, and the placeholder "Sorry, I couldn't put an answer together" did not count as a refusal. So it could reach the user, replace an honest first answer during the second look, and go unlogged. Now an empty reply is asked again (in both the normal and the streaming path), and the placeholder counts as a refusal. `tests/test_empty_reply.py` replays it, and fails on the old code.
+2. **The grader** (`evaluate.py`). "%" and "percent", and contractions ("doesn't", "can't") and their long forms, now match either way. `tests/test_grader.py` holds both held-out cases and checks for new false passes.
+
+Neither fix was aimed at a held-out question: the first is a reliability defect, the second fixes the measuring tool. Run 3 stays as measured; the next held-out run will show their effect.

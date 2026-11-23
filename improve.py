@@ -42,6 +42,8 @@ REFUSAL_MARKERS = (
     # so a reply that invites the question again is a refusal too ("please ask your question about
     # bereavement leave", "ask me about Pay and payroll"). Missing these skipped the second look.
     "please ask your question", "ask me about", "try asking", "you could ask me",
+    # orchestrator.EMPTY_REPLY: the model gave no answer, so this must never count as one
+    "couldn't put an answer together",
 )
 CHECK_CHARS = 300  # how far into an answer to look for these phrases (streaming holds back this much)
 

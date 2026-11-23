@@ -37,7 +37,7 @@ Suggested order: 1 → 2 → 4 → 5 → 9 → 7 → 8 → 6 → 3 → 10 → 12
 - [x] **8. Report per corpus, not pooled.** `evaluate.py answers` and `evaluate_search.py` now print a table per corpus, plus model time from the trace.
 - [ ] **9. Score answer accuracy on the held-out sets.** Needs item 5. Then run `evaluate.py answers --questions questions_heldout.yaml` and report it next to the tuning set.
   - Kestrel held-out done: 50/56 (answerable 39/45 = 87%, refusals 11/11), vs 49/49 on the tuning set. Misses in `docs/error-taxonomy.md`, run 3: 1 wrong answer from the wrong section, 2 search misses, 2 grader errors, 1 empty reply.
-  - Follow-ups that are not tuning: make the grader accept "%" for "percent" and contractions; find why the model returned an empty reply (Reliability track). Measure hybrid search on held-out (Eval track).
+  - Fixed (defects, not tuning): empty model replies are now asked again and never replace a real answer (`tests/test_empty_reply.py`); the grader accepts "%"/"percent" and contractions (`tests/test_grader.py`). Next: a Fernleaf held-out set, then measure hybrid search on held-out (Eval track).
 
 ## Phase 3: Make it legible
 
