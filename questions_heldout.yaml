@@ -1,0 +1,58 @@
+
+# ---- kestrel: 60 questions imported from kestrel_heldout.jsonl
+- {bot: kestrel, level: easy, section: "Pay and payroll", q: "how often do we get paid, and what day does the money usually come in?", must: ["every two weeks|biweekly", "friday", "direct deposit"]}
+- {bot: kestrel, level: easy, section: "Probation period", q: "I just joined the company. How long do I have to wait before I can take vacation?", must: ["90-day", "probation"]}
+- {bot: kestrel, level: easy, section: "Working hours and shifts", q: "How much extra money do people working the overnight warehouse shift receive per hour?", must: ["$2.50", "third shift"]}
+- {bot: kestrel, level: easy, section: "Sick leave", q: "Can I use my sick days if my child is ill and needs someone to look after them?", must: ["sick child"]}
+- {bot: kestrel, level: easy, section: "Public holidays", q: "How many paid holidays does Kestrel give us each year?", must: ["10", "paid public holidays"]}
+- {bot: kestrel, level: easy, section: "Bereavement leave", q: "My grandpa passed away. How much time can I take off without using my vacation balance?", must: ["5", "grandparent", "bereavement leave"]}
+- {bot: kestrel, level: easy, section: "Pay and payroll", q: "Where can I find my paycheck details online?", must: ["kestrel hub", "pay"]}
+- {bot: kestrel, level: easy, section: "Health insurance", q: "What is the company's contribution toward my health insurance premium?", must: ["80 percent", "60 percent"]}
+- {bot: kestrel, level: easy, section: "Workplace safety", q: "do i need special shoes to work inside the warehouse?", must: ["steel-toe boots", "high-visibility vest"]}
+- {bot: kestrel, level: easy, section: "Harassment and discrimination", q: "Who should I contact if I think someone at work is treating me unfairly or harassing me?", must: ["people operations", "speak up", "1-800-555-0177"]}
+- {bot: kestrel, level: easy, section: "Travel and expenses", q: "How much can I get reimbursed for meals when I travel somewhere within the US for work?", must: ["$60", "within the united states"]}
+- {bot: kestrel, level: easy, section: "Employee assistance program", q: "What's the phone number for confidential counseling through the employee assistance program?", must: ["1-800-555-0142", "any time"]}
+- {bot: kestrel, level: hard, section: "Paid time off", q: "I've worked here for 4 years as a full-time employee. How many vacation days do I earn annually, and how many unused days can I carry into next year?", must: ["20 days", "5"]}
+- {bot: kestrel, level: hard, section: "Public holidays", q: "I worked on a public holiday at the warehouse. What extra pay and time off should I receive?", must: ["double time", "60 days", "another day off"]}
+- {bot: kestrel, level: hard, section: "Retirement plan (401k)", q: "I'm a full-time employee, 25 years old, and have been here for 3 years. If I contribute 4% of my salary to retirement, how much will the company match, and is that money fully mine yet?", must: ["100 percent", "4 percent", "2 years"]}
+- {bot: kestrel, refuse: true, level: easy, q: "Does the company pay for a gym membership or fitness classes?"}
+- {bot: kestrel, refuse: true, level: easy, q: "Can I bring my dog to the office if I work from home only a few days a week?"}
+- {bot: kestrel, refuse: true, level: easy, q: "Does Kestrel offer childcare assistance or pay toward daycare costs for employees with children?"}
+- {bot: kestrel, refuse: true, level: easy, q: "If I relocate to another state for personal reasons, will the company pay my moving expenses?"}
+- {bot: kestrel, level: easy, section: "Working hours and shifts", q: "I'm scheduled for a shift swap with my coworker. How early do we need to get approval?", must: ["24 hours", "shift supervisor"]}
+- {bot: kestrel, level: easy, section: "Pay and payroll", q: "What happens to my pay if payday lands on a public holiday?", must: ["working day before", "public holiday"]}
+- {bot: kestrel, level: easy, section: "Pay and payroll", q: "I noticed my paycheck is wrong. Who do I email, and how long do I have to report it?", must: ["payroll@kestrel.example", "30 days"]}
+- {bot: kestrel, level: easy, section: "Paid time off", q: "Can I take three consecutive vacation days without giving advance notice?", must: ["2 weeks", "3 or more days"]}
+- {bot: kestrel, level: easy, section: "Sick leave", q: "I work part-time. How many sick days do I get annually?", must: ["5", "part-time"]}
+- {bot: kestrel, level: easy, section: "Sick leave", q: "When do I need to bring a doctor's note after being sick?", must: ["more than 3", "in a row"]}
+- {bot: kestrel, level: easy, section: "Parental leave", q: "My manager approved my parental leave. Can I split the time instead of taking it all at once?", must: ["three blocks", "12 months"]}
+- {bot: kestrel, level: easy, section: "Dental and vision", q: "How much does the company cover for my dental insurance?", must: ["100 percent", "dental premium"]}
+- {bot: kestrel, level: easy, section: "Retirement plan (401k)", q: "I want to sign up for the retirement plan. How long after starting can I enroll?", must: ["21", "30 days"]}
+- {bot: kestrel, level: easy, section: "Dental and vision", q: "what's the maximum amount i can claim for glasses or contacts every year?", must: ["$150", "a year"]}
+- {bot: kestrel, level: easy, section: "Training and tuition", q: "How many hours of paid training does each employee receive annually?", must: ["24", "paid hours"]}
+- {bot: kestrel, level: easy, section: "Referral bonus", q: "My friend got hired through my referral. When will I qualify for the referral bonus?", must: ["90 days", "bonus"]}
+- {bot: kestrel, level: hard, section: "Paid time off", q: "I've been working here for 6 years full-time. How much annual PTO should I earn, and how much of it can roll over to next year?", must: ["25 days", "5"]}
+- {bot: kestrel, level: hard, section: "Company vehicles and drivers", q: "I drove my truck for 8 hours today. What break am I supposed to take, and how long can I drive within a 14-hour work period?", must: ["30-minute", "11 hours", "14-hour"]}
+- {bot: kestrel, level: hard, section: "Overtime", q: "I'm an office employee earning $20 an hour and my manager approves me to work overtime. What hourly rate should I receive for 5 hours over 40 in one week?", must: ["1.5 times", "$30"]}
+- {bot: kestrel, refuse: true, level: easy, q: "Does the company provide employees with free parking at its warehouses?"}
+- {bot: kestrel, refuse: true, level: easy, q: "Can I get a company loan or an advance on my salary if I have an unexpected expense?"}
+- {bot: kestrel, refuse: true, level: hard, q: "If I resign after receiving a referral bonus, will I have to return that money?"}
+- {bot: kestrel, refuse: true, level: easy, q: "Is there a yearly bonus or profit-sharing payment for employees who receive an Outstanding performance rating?"}
+- {bot: kestrel, level: easy, section: "Bereavement leave", q: "I need to take time off for a family emergency. Do I have to notify my manager before taking bereavement leave?", must: ["does not need advance notice", "bereavement leave"]}
+- {bot: kestrel, level: easy, section: "Jury duty and voting", q: "How many hours can I take off to vote if my work schedule makes it difficult to get to the polling place?", must: ["2 hours", "3 free hours"]}
+- {bot: kestrel, level: easy, section: "Jury duty and voting", q: "My jury duty notice just arrived. What do I need to show my manager?", must: ["jury summons"]}
+- {bot: kestrel, level: easy, section: "Health insurance", q: "When can I enroll in the company's medical insurance after joining?", must: ["first day", "month after"]}
+- {bot: kestrel, level: easy, section: "Health insurance", q: "What are the two medical insurance options, and how much is the deductible for each?", must: ["standard", "$1,500", "$500"]}
+- {bot: kestrel, level: easy, section: "Health insurance", q: "When is the annual window to make changes to my health insurance selection?", must: ["november 1", "november 15"]}
+- {bot: kestrel, level: easy, section: "Workplace safety", q: "How often do I need to renew my forklift qualification?", must: ["3 years", "forklift certificate"]}
+- {bot: kestrel, level: easy, section: "Equipment and IT", q: "I accidentally damaged a company laptop. Who should I contact if the device is lost or stolen?", must: ["it@kestrel.example", "4357"]}
+- {bot: kestrel, level: easy, section: "Equipment and IT", q: "What's the minimum length my work password needs to be?", must: ["14 characters"]}
+- {bot: kestrel, level: easy, section: "Leaving Kestrel", q: "I'm planning to leave the company. How much notice should I give if I'm a regular employee?", must: ["2 weeks"]}
+- {bot: kestrel, level: easy, section: "Leaving Kestrel", q: "What happens to my unused sick leave when I leave Kestrel?", must: ["unused sick days", "not"]}
+- {bot: kestrel, level: easy, section: "People Operations contact", q: "When is the company's HR department available if I need to speak to someone?", must: ["monday to friday", "8 am to 6 pm", "eastern time"]}
+- {bot: kestrel, level: hard, section: "Paid time off", q: "I work in a warehouse and want to take vacation during Christmas. What additional approval do I need, and what dates does this restriction cover?", must: ["november 15", "january 5", "director approval"]}
+- {bot: kestrel, level: hard, section: "Code of conduct", q: "I received a $100 gift from a supplier. Am I allowed to keep it without telling anyone?", must: ["$75", "declined", "reported"]}
+- {bot: kestrel, level: hard, section: "Training and tuition", q: "I am a full-time employee with 2 years of service and want to take a course related to my job. What's the most tuition support I could receive, and what happens if I resign 6 months after getting it?", must: ["$5,250", "12 months", "half"]}
+- {bot: kestrel, refuse: true, level: easy, q: "Does the company offer relocation assistance to employees transferring between warehouse locations?"}
+- {bot: kestrel, refuse: true, level: easy, q: "Will Kestrel pay for an employee's professional certification exam and renewal fees?"}
+- {bot: kestrel, refuse: true, level: hard, q: "If my manager gives me an Outstanding rating, am I guaranteed a specific percentage increase in my salary?"}
