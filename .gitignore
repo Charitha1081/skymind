@@ -6,3 +6,8 @@
 __pycache__/
 *.pyc
 .venv/
+
+# Evaluation scratch files (keep only deliberate results in results/)
+/results*.json
+*.jsonl
+*_documents.txt
