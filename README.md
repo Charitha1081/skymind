@@ -107,6 +107,15 @@ The cheap model got 112 of 116 right and the strong one 113, at 1/27 of the pric
 
 Every miss is explained in [`docs/error-taxonomy.md`](docs/error-taxonomy.md): of 7 misses, 5 were search misses, 2 were the grader being too strict, and none was the model ignoring a section it was shown. The search misses led to the topic-guided second look (`orchestrator.py`, `named_topics`); its effect still has to be measured on the next run.
 
+**After the fix** (same 116 questions, cheap model, BM25, one run):
+
+| Run | Fernleaf | Acme | Kestrel | Total | $ per 1,000 answers |
+|---|---|---|---|---|---|
+| Before (cheap) | 41/43 | 24/24 | 47/49 | 112/116 | 0.16 |
+| After (cheap) | 42/43 | 24/24 | 49/49 | 115/116 | 0.18 |
+
+Of the 3 extra points, 2 come from the second look (both handbook search misses now answered) and 1 from correcting the grader on the downgrade question, so the system itself improved by 2 questions. It costs about 10% more per answer, because a refusal now triggers a second model call. The one remaining miss ("How can I talk to a person?") is a known limitation: the refusal was phrased in a way SkyMind does not recognise, and it named the wrong topic. The fix was designed from these exact misses, so it still has to be confirmed on a held-out set.
+
 Routing: the router agrees with the easy/hard labels on all 104 labelled questions. Treat that as a sanity check, not a result: these questions were written by people who knew how the router works. All numbers above come from one tuning set that was used to make decisions, so they need confirming on held-out and blind sets (see [`docs/writing-questions.md`](docs/writing-questions.md)). How the router was rebuilt after failing on new questions is in `docs/reversals.md`.
 
 To measure hybrid and tune its similarity threshold:

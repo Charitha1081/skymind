@@ -32,7 +32,7 @@ Suggested order: 1 → 2 → 4 → 5 → 9 → 7 → 8 → 6 → 3 → 10 → 12
   - `evaluate_search.py` picks up `questions_heldout.yaml` and `questions_blind.yaml` automatically.
 - [ ] **6. Grow to ~300 scored questions.** Targets per corpus are in `docs/writing-questions.md`. Refusals are the thinnest part: only 11 today, so each one is worth 9 points. Add ~8 more to the tuning set per corpus.
 - [x] **7. Error taxonomy.** First pass done: [`docs/error-taxonomy.md`](docs/error-taxonomy.md). 7 misses = 5 search misses + 2 grader errors; the model never ignored a section it was shown. It led to the topic-guided second look and better refusal detection.
-  - Next: rerun `evaluate.py answers` (cheap model is enough, about $0.05) to measure how many search misses the fix closes, and relabel.
+  - Run 2 done: 112 → 115 of 116 (cheap model). +2 from the second look (both handbook misses), +1 from the grader fix; about 10% more cost per answer. One known limitation remains ("How can I talk to a person?"). Confirm on the held-out set.
 - [x] **8. Report per corpus, not pooled.** `evaluate.py answers` and `evaluate_search.py` now print a table per corpus, plus model time from the trace.
 - [ ] **9. Score answer accuracy on the held-out sets.** Needs item 5. Then run `evaluate.py answers --questions questions_heldout.yaml` and report it next to the tuning set.
 

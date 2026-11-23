@@ -46,4 +46,29 @@ Every wrong answer gets one label, so the miss list becomes a work list: the big
 2. **Refusal detection:** replies that invite the question again ("ask me about…", "please ask your question…") count as refusals (`improve.REFUSAL_MARKERS`).
 3. **Grader:** the downgrade question now accepts any answer that mentions the billing period. This is a grading change made after seeing the answers, so it is recorded here.
 
-**Not measured yet:** how many of the 5 search misses the second-look change actually fixes. Rerun the answers evaluation, and report it on a held-out set too, since this fix was designed by looking at these exact misses.
+## Run 2: after the fix (116 questions, Claude cheap model, BM25)
+
+115 of 116 correct (before: 112). Fernleaf 42/43, Acme 24/24, Kestrel 49/49. Cost $0.18 per 1,000 answers (before $0.16): the second look adds a model call after a refusal.
+
+| Question | Before | After | Why |
+|---|---|---|---|
+| When do I get my paycheck? | missed | **correct** | The refusal named "Pay and payroll"; the second look fetched it |
+| How many days off do I get if my grandmother dies? | missed (cheap) | **correct** | The refusal is now recognised, and named "Bereavement leave" |
+| Why does a downgrade not take effect right away…? | marked wrong | **correct** | Grader fixed. The answer was right before too, so this is not a system improvement |
+| How can I talk to a person? | missed | **still missed** | See below |
+
+**The one remaining miss, a known limitation.** The reply was *"I'm not able to connect you to a person directly, but you can contact Fernleaf Software directly… such as company events like the Fernleaf Summit"*. Both safety nets failed:
+
+1. **Not recognised as a refusal.** "not able to connect you" matches none of the refusal phrases, so the second look never ran.
+2. **The wrong topic was named.** The model pointed at "Fernleaf Summit", not "Customer support hours", so even a second look would have fetched the wrong section.
+
+Neither word search nor meaning search links "talk to a person" to "Customer support hours". It is left unfixed on purpose: adding one more phrase would only patch this question. Reported as a limitation.
+
+| Label | Run 1 | Run 2 |
+|---|---|---|
+| search missed | 5 | 1 |
+| grader too strict | 2 | 0 |
+| model ignored context | 0 | 0 |
+| made something up | 0 | 0 |
+
+**Still to do:** the fix was designed by looking at these exact misses, so the improvement must be confirmed on a held-out set written before this run (TODO.md, item 5).
