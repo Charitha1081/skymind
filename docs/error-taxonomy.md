@@ -71,4 +71,31 @@ Neither word search nor meaning search links "talk to a person" to "Customer sup
 | model ignored context | 0 | 0 |
 | made something up | 0 | 0 |
 
-**Still to do:** the fix was designed by looking at these exact misses, so the improvement must be confirmed on a held-out set written before this run (TODO.md, item 5).
+## Run 3: held-out (Kestrel, 56 questions, cheap model, BM25)
+
+Questions written by ChatGPT from the handbook text alone (no code, no tuning questions, no section titles), checked by `questions_kit.py` and reviewed by hand (4 "unanswerable" questions that the handbook does answer were removed). 50 of 56 correct: 39/45 answerable, 11/11 refusals. These misses are labelled and reported, **not fixed**.
+
+| Question | What happened | Label |
+|---|---|---|
+| My paycheck is wrong. Who do I email, and how long do I have? | Search missed "Pay and payroll"; the model gave people@kestrel.example (the general HR address) instead of payroll@kestrel.example, and missed the 30 days | **answered from the wrong section** |
+| Who should I contact if someone is treating me unfairly or harassing me? | Search returned "People Operations contact", not "Harassment and discrimination"; the answer was a valid channel but missed the anonymous Speak Up line | search missed (answer incomplete) |
+| When is the company's HR department available? | "HR" shares no word with "People Operations"; the model honestly said it didn't have the hours | search missed (honest refusal) |
+| Do I have to notify my manager before bereavement leave? | Correct ("doesn't need advance notice"), but the grader required "does not need advance notice" | grader too strict |
+| 4% to the 401(k) after 3 years: what's the match, and is it mine? | Correct ("100%", "4%", vested after 2 years), but the grader required "100 percent" and "4 percent" | grader too strict |
+| Christmas vacation in the warehouse: what approval and which dates? | The reply was "Sorry, I couldn't put an answer together": the model returned an empty answer | **system error** |
+
+| Label | Run 1 (tuning) | Run 2 (tuning, after fix) | Run 3 (held-out) |
+|---|---|---|---|
+| search missed | 5 | 1 | 2 |
+| answered from the wrong section | 0 | 0 | 1 |
+| grader too strict | 2 | 0 | 2 |
+| system error | 0 | 0 | 1 |
+| made something up | 0 | 0 | 0 |
+
+### What held-out showed that the tuning set could not
+
+- **Accuracy was overstated by about 13 points** (100% → 87% on Kestrel; 91% counting the grader errors as correct).
+- **The first wrong answer.** On the tuning set, a search miss always ended in "I don't know". On held-out, the model once answered confidently from a related section. For a company assistant that is the most serious kind of failure, and it is the one to watch in future runs.
+- **Search cannot filter on-topic unanswerable questions** (0/11 returned nothing), but the model refused all 11 correctly.
+- **An empty model reply reached the user.** This is a reliability defect, not a quality miss; it belongs to the Reliability track.
+- **The grader is too literal about symbols and contractions** ("%" vs "percent", "doesn't" vs "does not"). Fixing the grader is allowed (it is not tuning the system), but the held-out figures above stay as measured.

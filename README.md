@@ -116,6 +116,17 @@ Every miss is explained in [`docs/error-taxonomy.md`](docs/error-taxonomy.md): o
 
 Of the 3 extra points, 2 come from the second look (both handbook search misses now answered) and 1 from correcting the grader on the downgrade question, so the system itself improved by 2 questions. It costs about 10% more per answer, because a refusal now triggers a second model call. The one remaining miss ("How can I talk to a person?") is a known limitation: the refusal was phrased in a way SkyMind does not recognise, and it named the wrong topic. The fix was designed from these exact misses, so it still has to be confirmed on a held-out set.
 
+**On questions it was never tuned on** (Kestrel held-out set: 56 questions written by ChatGPT from the handbook without seeing SkyMind's code, questions or section titles, then reviewed by hand; cheap model, BM25, one run, `questions_heldout.yaml`):
+
+| Kestrel | Tuning set | Held-out |
+|---|---|---|
+| Search: right section in top 3 (BM25) | 39/45 = 87% | 36/45 = 80% |
+| Answerable questions answered correctly | 47/47 = 100% | 39/45 = 87% |
+| Unanswerable questions correctly refused | 2/2 | 11/11 = 100% |
+| Cost per 1,000 answers | $0.18 | $0.27 |
+
+The tuning set overstated accuracy by about 13 points. Two of the six held-out misses were the grader being too strict ("4%" against a required "4 percent", "doesn't need" against "does not need"), so the answers were really 41/45 = 91% correct; both figures are reported. Refusals held at 100% even though search returned a section for every unanswerable question: these questions are on-topic ("Does the company pay for a gym membership?"), so search cannot filter them out, and the model is what correctly said it didn't know. The held-out set also found the first wrong answer: for "My paycheck is wrong, who do I email?", search missed the payroll section and the model confidently gave the general HR address from a nearby section. Details in [`docs/error-taxonomy.md`](docs/error-taxonomy.md). Held-out misses are reported, not fixed: changing code because of them would turn the held-out set into a tuning set.
+
 Routing: the router agrees with the easy/hard labels on all 104 labelled questions. Treat that as a sanity check, not a result: these questions were written by people who knew how the router works. All numbers above come from one tuning set that was used to make decisions, so they need confirming on held-out and blind sets (see [`docs/writing-questions.md`](docs/writing-questions.md)). How the router was rebuilt after failing on new questions is in `docs/reversals.md`.
 
 To measure hybrid and tune its similarity threshold:

@@ -65,22 +65,39 @@ def line(item: dict) -> str:
     return "- {" + ", ".join(parts) + "}"
 
 
+def read_objects(source: str, problems: list[str]) -> list[dict]:
+    """Every {...} object in the file, whatever surrounds it. Chatbots add code fences, commas, list
+    brackets, numbering, wrapped lines or invisible characters between objects; none of that matters."""
+    text = open(source, encoding="utf-8-sig").read()
+    for bad, good in (("\u201c", '"'), ("\u201d", '"'), ("\u00a0", " "), ("\u2028", " "), ("\u2029", " ")):
+        text = text.replace(bad, good)
+    decoder, objects, i = json.JSONDecoder(strict=False), [], 0  # strict=False: line breaks inside text are fine
+    while True:
+        i = text.find("{", i)
+        if i < 0:
+            return objects
+        try:
+            obj, end = decoder.raw_decode(text, i)
+        except json.JSONDecodeError as err:
+            problems.append(f"unreadable text near: {text[i:i + 80]!r} ({err.msg})")
+            i += 1
+            continue
+        if isinstance(obj, dict) and "question" in obj:
+            for key in ("question", "answer", "evidence"):  # a line wrapped while copying becomes one space
+                if isinstance(obj.get(key), str):
+                    obj[key] = " ".join(obj[key].split())
+            objects.append(obj)
+        i = end
+
+
 def import_(bot: str, source: str, target: str) -> None:
     chunks = bot_chunks(bot)
     text_of = {c["title"]: norm(c["title"] + " " + c["text"]).replace(",", "") for c in chunks}
     good, problems, seen = [], [], set()
-    for n, raw in enumerate(open(source, encoding="utf-8"), 1):
-        raw = raw.strip().rstrip(",")
-        if not raw or raw.startswith(("```", "[", "]")):
-            continue
-        try:
-            q = json.loads(raw)
-        except json.JSONDecodeError:
-            problems.append(f"line {n}: not valid JSON: {raw[:80]}")
-            continue
+    for n, q in enumerate(read_objects(source, problems), 1):
         question = str(q.get("question", "")).strip()
         if not question or norm(question) in seen:
-            problems.append(f"line {n}: empty or duplicate question")
+            problems.append(f"#{n}: empty or duplicate question")
             continue
         level = "hard" if str(q.get("difficulty", "")).lower() == "hard" else "easy"
         if q.get("answerable") is False:
@@ -89,15 +106,15 @@ def import_(bot: str, source: str, target: str) -> None:
             continue
         section = find_section(chunks, str(q.get("evidence", "")))
         if section is None:
-            problems.append(f"line {n}: evidence not found in the documents: {question!r}")
+            problems.append(f"#{n}: evidence not found in the documents: {question!r}")
             continue
         must = [str(m).strip() for m in q.get("must_contain", []) if str(m).strip()]
         if not must:
-            problems.append(f"line {n}: no must_contain words: {question!r}")
+            problems.append(f"#{n}: no must_contain words: {question!r}")
             continue
         missing = [m for m in must if not any(norm(alt).replace(",", "") in text_of[section] for alt in m.split("|"))]
         if missing and level == "easy":
-            problems.append(f"line {n}: {missing} not in section {section!r} (a hard question may compute it; mark it hard): {question!r}")
+            problems.append(f"#{n}: {missing} not in section {section!r} (a hard question may compute it; mark it hard): {question!r}")
             continue
         seen.add(norm(question))
         good.append({"bot": bot, "level": level, "section": section, "q": question, "must": must})
