@@ -1,0 +1,104 @@
+- bot: kestrel
+  refuse: true
+  level: easy
+  q: Will Kestrel pay for an employee's professional certification exam and renewal
+    fees?
+- bot: kestrel
+  refuse: true
+  level: hard
+  q: If my manager gives me an Outstanding rating, am I guaranteed a specific percentage
+    increase in my salary?
+- bot: fernleaf
+  level: easy
+  section: About Fernleaf
+  q: what kind of work can i manage with Fernleaf?
+  must:
+  - projects
+  - time
+  - invoices
+- bot: fernleaf
+  level: easy
+  section: About Fernleaf
+  q: Who started Fernleaf Software, and when was it founded?
+  must:
+  - maya chen
+  - arjun patel
+  - '2021'
+- bot: fernleaf
+  level: easy
+  section: Product modules
+  q: How many different tools or modules does Fernleaf offer?
+  must:
+  - '14'
+- bot: fernleaf
+  level: easy
+  section: How to set up a new workspace
+  q: I'm setting up Fernleaf for my agency. Where do I go to add my coworkers?
+  must:
+  - settings
+  - members
+  - invite
+- bot: fernleaf
+  level: easy
+  section: Pricing plans
+  q: How much does the Team subscription cost if I pay month by month?
+  must:
+  - $15
+  - per user
+  - monthly
+- bot: fernleaf
+  level: easy
+  section: Free trial
+  q: Do I need to enter my credit card details to try Fernleaf?
+  must:
+  - 14-day
+  - no credit card
+- bot: fernleaf
+  level: easy
+  section: Integrations
+  q: Can I connect my QuickBooks account to Fernleaf?
+  must:
+  - quickbooks
+- bot: fernleaf
+  level: easy
+  section: Mobile apps
+  q: Is there a Fernleaf app I can use on my Android phone?
+  must:
+  - android
+  - android 11
+  - free
+- bot: fernleaf
+  level: easy
+  section: Team roles and permissions
+  q: Who is allowed to change billing and subscription settings in a workspace?
+  must:
+  - owner
+  - billing
+- bot: fernleaf
+  level: easy
+  section: Storage limits
+  q: how much space do i get to upload files on the Starter plan
+  must:
+  - 2 gb
+  - starter
+- bot: fernleaf
+  level: easy
+  section: Data security and compliance
+  q: What encryption does Fernleaf use to protect stored information?
+  must:
+  - aes-256
+- bot: fernleaf
+  level: easy
+  section: Release notes
+  q: Where can I find the latest release information without contacting support?
+  must:
+  - what's new
+  - help center
+- bot: fernleaf
+  level: easy
+  section: API and developer docs
+  q: What is the maximum number of API calls my workspace can make in one minute?
+  must:
+  - '100'
+  - per minute
+  - per workspace

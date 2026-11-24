@@ -26,6 +26,7 @@ Suggested order: 1 → 2 → 4 → 5 → 9 → 7 → 8 → 6 → 3 → 10 → 12
 
 - [x] **4. A second corpus.** Kestrel Logistics, a 30-section employee handbook (`examples.py`, not deployed). BM25 recall@3 is 97% on Fernleaf but 87% on Kestrel, so one corpus had flattered search.
 - [ ] **5. Held-out and blind question sets** (the most important open item). Everything measured so far comes from one tuning set that was used to make decisions.
+  - Fernleaf held-out done too: 65 questions (51 answerable, 14 unanswerable). Both corpora now have held-out sets (121 questions).
   - Kestrel held-out done: 56 questions (45 answerable, 11 unanswerable), written by ChatGPT with `questions_kit.py`, reviewed by hand. Still to do: a Fernleaf held-out set, and blind sets (Gemini, and ideally a person).
   - Guide for whoever writes them: [`docs/writing-questions.md`](docs/writing-questions.md).
   - First: a Kestrel held-out set (~40 answerable, ~12 should refuse), written **before** the second-look fix is measured.
@@ -36,6 +37,7 @@ Suggested order: 1 → 2 → 4 → 5 → 9 → 7 → 8 → 6 → 3 → 10 → 12
   - Run 2 done: 112 → 115 of 116 (cheap model). +2 from the second look (both handbook misses), +1 from the grader fix; about 10% more cost per answer. One known limitation remains ("How can I talk to a person?"). Confirm on the held-out set.
 - [x] **8. Report per corpus, not pooled.** `evaluate.py answers` and `evaluate_search.py` now print a table per corpus, plus model time from the trace.
 - [ ] **9. Score answer accuracy on the held-out sets.** Needs item 5. Then run `evaluate.py answers --questions questions_heldout.yaml` and report it next to the tuning set.
+  - Both corpora, after the fixes (run 4): 112/121 overall; answerable 87/96 as graded (90/96 after reviewing grader errors), refusals 25/25. Misses in `docs/error-taxonomy.md`, run 4.
   - Kestrel held-out done: 50/56 (answerable 39/45 = 87%, refusals 11/11), vs 49/49 on the tuning set. Misses in `docs/error-taxonomy.md`, run 3: 1 wrong answer from the wrong section, 2 search misses, 2 grader errors, 1 empty reply.
   - Fixed (defects, not tuning): empty model replies are now asked again and never replace a real answer (`tests/test_empty_reply.py`); the grader accepts "%"/"percent" and contractions (`tests/test_grader.py`). Next: a Fernleaf held-out set, then measure hybrid search on held-out (Eval track).
 

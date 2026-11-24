@@ -116,16 +116,17 @@ Every miss is explained in [`docs/error-taxonomy.md`](docs/error-taxonomy.md): o
 
 Of the 3 extra points, 2 come from the second look (both handbook search misses now answered) and 1 from correcting the grader on the downgrade question, so the system itself improved by 2 questions. It costs about 10% more per answer, because a refusal now triggers a second model call. The one remaining miss ("How can I talk to a person?") is a known limitation: the refusal was phrased in a way SkyMind does not recognise, and it named the wrong topic. The fix was designed from these exact misses, so it still has to be confirmed on a held-out set.
 
-**On questions it was never tuned on** (Kestrel held-out set: 56 questions written by ChatGPT from the handbook without seeing SkyMind's code, questions or section titles, then reviewed by hand; cheap model, BM25, one run, `questions_heldout.yaml`):
+**On questions it was never tuned on** (`questions_heldout.yaml`: 121 questions written by ChatGPT from each company's documents alone, without SkyMind's code, the tuning questions or the section titles, then checked by `questions_kit.py` and reviewed by hand; cheap model, BM25):
 
-| Kestrel | Tuning set | Held-out |
-|---|---|---|
-| Search: right section in top 3 (BM25) | 39/45 = 87% | 36/45 = 80% |
-| Answerable questions answered correctly | 47/47 = 100% | 39/45 = 87% |
-| Unanswerable questions correctly refused | 2/2 | 11/11 = 100% |
-| Cost per 1,000 answers | $0.18 | $0.27 |
+| | Fernleaf | Kestrel | Both |
+|---|---|---|---|
+| Search: right section in top 3 (BM25) | 43/51 = 84% | 36/45 = 80% | 79/96 = 82% |
+| Answerable, as graded | 46/51 | 41/45 | 87/96 = 91% |
+| Answerable, after reviewing the grader's 3 errors by hand | 48/51 | 42/45 | 90/96 = 94% |
+| Unanswerable, correctly refused | 14/14 | 11/11 | 25/25 = 100% |
+| Overall | 60/65 | 52/56 | 112/121 = 93% |
 
-The tuning set overstated accuracy by about 13 points. Two of the six held-out misses were the grader being too strict ("4%" against a required "4 percent", "doesn't need" against "does not need"), so the answers were really 41/45 = 91% correct; both figures are reported. Refusals held at 100% even though search returned a section for every unanswerable question: these questions are on-topic ("Does the company pay for a gym membership?"), so search cannot filter them out, and the model is what correctly said it didn't know. The held-out set also found the first wrong answer: for "My paycheck is wrong, who do I email?", search missed the payroll section and the model confidently gave the general HR address from a nearby section. Details in [`docs/error-taxonomy.md`](docs/error-taxonomy.md). Held-out misses are reported, not fixed: changing code because of them would turn the held-out set into a tuning set.
+The tuning set had scored 100% on Kestrel; the first held-out run scored 87% there (before the empty-reply and grader fixes), and this run 91%. Of the 9 misses, 4 were search misses, 2 were answers from the wrong section, 3 were the grader being too literal ("no card required" against a required "no credit card"), and none was an invented fact. Every unanswerable question was refused even though search returned a section for each of them: they are on-topic ("Is Fernleaf HIPAA-compliant?"), so search cannot filter them out, and the model is what said it didn't know. The most serious miss repeated in both runs: for "My paycheck is wrong, who do I email?", search missed the payroll section and the model gave the general HR address. 15 questions in this run never reached the bot (connection errors while the hosted service restarted); they were run once more and all connected. All misses are in [`docs/error-taxonomy.md`](docs/error-taxonomy.md), runs 3 and 4. Held-out misses are reported, not fixed: changing code because of them would turn the held-out set into a tuning set.
 
 Routing: the router agrees with the easy/hard labels on all 104 labelled questions. Treat that as a sanity check, not a result: these questions were written by people who knew how the router works. All numbers above come from one tuning set that was used to make decisions, so they need confirming on held-out and blind sets (see [`docs/writing-questions.md`](docs/writing-questions.md)). How the router was rebuilt after failing on new questions is in `docs/reversals.md`.
 

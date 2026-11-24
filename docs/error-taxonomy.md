@@ -106,3 +106,37 @@ Questions written by ChatGPT from the handbook text alone (no code, no tuning qu
 2. **The grader** (`evaluate.py`). "%" and "percent", and contractions ("doesn't", "can't") and their long forms, now match either way. `tests/test_grader.py` holds both held-out cases and checks for new false passes.
 
 Neither fix was aimed at a held-out question: the first is a reliability defect, the second fixes the measuring tool. Run 3 stays as measured; the next held-out run will show their effect.
+
+## Run 4: held-out, both corpora, after the fixes (121 questions, cheap model, BM25)
+
+Kestrel's 56 held-out questions again, plus 65 new Fernleaf held-out questions written the same way. 15 questions hit connection errors while the hosted service restarted; they never reached the bot, so they were run once more (all connected) and are counted from that run. Results: `results/answers-cheap-heldout-both-2026-11.json` and `results/answers-cheap-heldout-retry-connect-errors-2026-11.json`.
+
+112 of 121 correct: Fernleaf 60/65, Kestrel 52/56. Answerable 87/96 as graded (90/96 after reviewing the grader's errors by hand); unanswerable 25/25.
+
+| Question | Corpus | What happened | Label |
+|---|---|---|---|
+| My paycheck is wrong. Who do I email, and how long do I have? | Kestrel | The general HR address again (people@, not payroll@), the same miss as run 3. The reply even named "Pay and payroll", but "I don't have a deadline" is not recognised as a refusal, so no second look | **answered from the wrong section** |
+| What kind of work can I manage with Fernleaf? | Fernleaf | Search took "manage" literally and returned the roles section ("Admins manage members"); the answer described roles, not the product | **answered from the wrong section** |
+| When can I attend Fernleaf's free online training session each week? | Fernleaf | Search missed "Help center and webinars"; the reply named "webinars and the Help Center", in a different word order from the title, so the topic-guided second look did not match it | search missed (honest refusal) |
+| Can I take three vacation days in a row without advance notice? | Kestrel | Search missed "Paid time off"; "I don't have the rules on…" is not recognised as a refusal, so no second look | search missed (honest refusal) |
+| Who should I contact if someone is treating me unfairly or harassing me? | Kestrel | People Operations, but not the Speak Up line | search missed (incomplete) |
+| Where can I find upcoming product announcements and maintenance updates? | Fernleaf | Release notes, but not the status page | search missed (incomplete) |
+| Does the company have a security compliance report customers can request? | Fernleaf | Correct ("customers can request it"); required "on request" | grader too strict |
+| Do I need my credit card details to try Fernleaf? | Fernleaf | Correct ("no card required"); required "no credit card" | grader too strict |
+| Do I have to notify my manager before bereavement leave? | Kestrel | Correct ("doesn't require advance notice"); required "does not need" | grader too strict |
+
+| Label | Run 3 (Kestrel held-out) | Run 4 (both held-out) |
+|---|---|---|
+| search missed | 2 | 4 |
+| answered from the wrong section | 1 | 2 |
+| grader too strict | 2 | 3 |
+| system error | 1 | 0 |
+| made something up | 0 | 0 |
+
+### What run 4 showed
+
+- **The fixes held.** No empty replies; the Christmas-vacation question that returned one in run 3 is now answered.
+- **The safety nets match too literally.** Refusal detection misses new phrasings ("I don't have a deadline", "I don't have the rules"), and the topic-guided second look needs the title's exact words ("webinars and the Help Center" vs "Help center and webinars"). Both are reported, not fixed: they were found on held-out questions.
+- **Answering from the wrong section is the failure to watch.** It happened twice, once with a wrong contact address. It is rarer than an honest refusal, but it is the one that misleads a user.
+- **Fact-based grading has a limit.** Required phrases written by another AI ("no credit card", "on request") miss correct paraphrases. Each was checked by hand and both figures are reported; a later grader could accept listed alternatives or use a model as judge.
+
