@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends
 import router
 from runtime import state
 from security import require_admin
-from store import BOTS_SET, bot_key, bot_stats, latency_key, month_cost_keys, month_spent, quality_counts, sessions_key, stats_key
+from store import (FLEET, BOTS_SET, bot_key, bot_stats, latency_key, month_cost_keys, month_spent, quality_counts,
+                   sessions_key, stats_key)
 
 api = APIRouter(tags=["Admin"])
 
@@ -71,6 +72,7 @@ async def reset_all_stats():
     r = state.redis
     for bot_id in await r.smembers(BOTS_SET):
         await r.delete(stats_key(bot_id), latency_key(bot_id), sessions_key(bot_id), *month_cost_keys(bot_id))
+    await r.delete(*month_cost_keys(FLEET))
     return {"cleared": True}
 
 

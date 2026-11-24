@@ -37,7 +37,7 @@ import settings
 import web
 from runtime import log, state
 from security import client_ip, current_user, is_admin, rate_limited
-from store import add_month_cost, load_bot, load_history, month_spent, record_stats, save_turn, stats_key
+from store import add_month_cost, fleet_spent, load_bot, load_history, month_spent, record_stats, save_turn, stats_key
 
 
 class ChatRequest(BaseModel):
@@ -101,13 +101,17 @@ async def prepare_chat(bot_id: str, req: ChatRequest, request: Request) -> dict:
     # Abuse protection: per-conversation and per-address limits, then a hard spending stop. The session id
     # is chosen by the browser, so only the per-address limit stops a script that sends a new id each time.
     # Admins (evaluate.py and loadtest.py use the admin token) are not limited by address.
+    admin = await is_admin(request, user)
     if await rate_limited(f"s:{bot_id}:{req.session_id}", settings.CHAT_LIMIT_PER_SESSION) or (
-        not await is_admin(request, user) and await rate_limited(f"ip:{client_ip(request)}", settings.CHAT_LIMIT_PER_IP)
+        not admin and await rate_limited(f"ip:{client_ip(request)}", settings.CHAT_LIMIT_PER_IP)
     ):
         raise HTTPException(429, "Too many messages. Please wait a minute and try again.")
     spent = await month_spent(bot_id)  # this calendar month only: the budget is monthly
     if spent >= max(bot["llm_budget"], 1.0) * settings.HARD_STOP_FACTOR:
         raise HTTPException(429, f"{bot['company']}'s assistant has reached its monthly limit. Please contact {bot['company']} directly.")
+    # The whole server's model spending this month: the last line of defence for whoever pays the model bill
+    if not admin and settings.MAX_FLEET_LLM_BUDGET > 0 and await fleet_spent() >= settings.MAX_FLEET_LLM_BUDGET:
+        raise HTTPException(429, "This assistant has reached this month's usage limit. Please try again next month.")
     remembers = bot["spec"]["memory"] != ["none"]
     job = bot.get("job", "answer")
     job_cfg = jobs.get(job)

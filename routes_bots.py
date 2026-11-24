@@ -43,7 +43,9 @@ async def deploy_bot(
     # Admins (and evaluate.py / loadtest.py, which use the admin token) are not limited.
     if not admin and await rate_limited(f"deploy:{client_ip(request)}", settings.DEPLOY_LIMIT_PER_IP, window_s=3600):
         raise HTTPException(429, "Too many bots deployed from your address this hour. Please try again later.")
-    return await create_bot(body, owner_email=user["email"] if user else "")
+    # Model calls are paid by whoever runs this server, so only admins may give a bot a bigger model budget
+    return await create_bot(body, owner_email=user["email"] if user else "",
+                            llm_cap=None if admin else settings.MAX_BOT_LLM_BUDGET)
 
 
 @api.get("/bots", dependencies=[Depends(require_admin)])

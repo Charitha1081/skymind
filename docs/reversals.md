@@ -28,6 +28,13 @@ Each entry: **what we believed → what showed it was wrong → what we changed 
 - **Changed:** _(fill in)_
 - **Guarded by:** _(fill in)_
 
+## The budget belonged to the wrong person
+
+- **Believed:** the budget guard and hard stop protected the money.
+- **Evidence:** checking SkyMind against a public list of common attacks showed that whoever *deploys* a bot picks its budget, while whoever *runs the server* pays the model bill. A visitor could set a $99,999,999,999 budget, and a negative one was accepted. The guard protected the visitor's number, not the owner's credits. The sample bots on the live site had about $330 a month of model budget, open to anyone.
+- **Changed:** a per-bot cap on model spending for every bot not deployed with the admin token (sample bots included, existing ones capped on the next start), a server-wide monthly cap, and refusal of zero, negative or absurd values.
+- **Guarded by:** `guard_check.py` (11 of 14 blocked before, 14 of 14 after; it fails CI if any attack gets through) and `tests/test_budget_caps.py`.
+
 ## The monthly budget never reset
 
 - **Believed:** the budget guard and the hard stop enforced a *monthly* budget.

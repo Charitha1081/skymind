@@ -78,12 +78,24 @@ MONTH_COST_TTL = 40 * 24 * 3600  # long enough to outlive its month
 
 
 def add_month_cost(pipe, bot_id: str, usd: float) -> None:
-    pipe.incrbyfloat(month_cost_key(bot_id), usd)
-    pipe.expire(month_cost_key(bot_id), MONTH_COST_TTL)
+    for key in (month_cost_key(bot_id), month_cost_key(FLEET)):
+        pipe.incrbyfloat(key, usd)
+        pipe.expire(key, MONTH_COST_TTL)
 
 
 async def month_spent(bot_id: str) -> float:
     return float(await state.redis.get(month_cost_key(bot_id)) or 0)
+
+
+FLEET = "_fleet"  # every bot's spending this month, added up (never deleted with a bot)
+
+
+async def fleet_spent() -> float:
+    return float(await state.redis.get(month_cost_key(FLEET)) or 0)
+
+
+def capped_llm_budget(llm_budget: float, cap: float | None) -> float:
+    return min(llm_budget, cap) if cap and cap > 0 else llm_budget
 
 
 # ---------- Bots ----------
@@ -183,8 +195,12 @@ async def _resolve_quiet(host: str) -> list[str]:
         return ["8.8.8.8"]
 
 
-async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = False, owner_email: str = "") -> dict:
-    """Plan a bot, split its documents and store it. Raises HTTPException on bad input."""
+async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = False, owner_email: str = "",
+                     llm_cap: float | None = None) -> dict:
+    """Plan a bot, split its documents and store it. Raises HTTPException on bad input.
+
+    llm_cap: the most model spending a month this bot may have, whatever budget was asked for (None = no cap,
+    for bots deployed with the admin token)."""
     name = str(body.get("bot_name", "")).strip()
     if not 1 <= len(name) <= 60:
         raise HTTPException(422, "bot_name is required (1 to 60 characters)")
@@ -209,6 +225,10 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         access = auth.parse_access(body.get("access"))
     except ValueError as err:
         raise HTTPException(422, str(err))
+    if spec["budget"] <= 0:
+        raise HTTPException(422, "monthly_budget must be more than $0.")
+    if spec["users"] > settings.MAX_CONCURRENT_USERS:
+        raise HTTPException(422, f"expected_concurrent_users can be at most {settings.MAX_CONCURRENT_USERS:,} on this server.")
     if access["mode"] == "google" and not auth.google_enabled():
         raise HTTPException(422, "Google sign-in is not set up on this server, so the bot can only be public.")
     search = str(body.get("search") or settings.SEARCH_METHOD).strip().lower()
@@ -239,6 +259,10 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
     bot_id = fixed_id or f"{slugify(name)}-{secrets.token_hex(4)}"  # hard to guess
     owner_key = secrets.token_urlsafe(24)  # shown once to the company that deployed it
     notes = list(result["notes"])
+    wanted = max(spec["budget"] - result["cost"]["infra"], 0.0)
+    if capped_llm_budget(wanted, llm_cap) < wanted:
+        notes.insert(0, f"Model spending is capped at ${llm_cap:g} a month per bot on this server, "
+                        f"so this bot stops answering at about ${llm_cap * settings.HARD_STOP_FACTOR:g} a month.")
     if any(m in ("summary", "long_term") for m in spec["memory"]):
         notes.insert(0, "Memory types 'summary' and 'long_term' are planned. For now this bot keeps the recent messages of each conversation.")
 
@@ -250,7 +274,7 @@ async def create_bot(body: dict, fixed_id: str | None = None, featured: bool = F
         "created_at": int(time.time()),
         "spec": spec,
         "plan": result,
-        "llm_budget": max(spec["budget"] - result["cost"]["infra"], 0.0),
+        "llm_budget": capped_llm_budget(max(spec["budget"] - result["cost"]["infra"], 0.0), llm_cap),
         "chunks": chunks,
         "featured": featured,
         "owner_key_hash": hash_key(owner_key),
@@ -294,7 +318,7 @@ async def seed_examples() -> None:
         raw = await state.redis.get(bot_key(bot_id))
         if raw is None:
             body = {k: v for k, v in ex.items() if k != "key"}
-            await create_bot(body, fixed_id=bot_id, featured=True)
+            await create_bot(body, fixed_id=bot_id, featured=True, llm_cap=settings.MAX_BOT_LLM_BUDGET)
             bot = json.loads(await state.redis.get(bot_key(bot_id)))
             bot["sample_hash"] = hashlib.sha256(ex["knowledge"].encode()).hexdigest()[:16]
             await state.redis.set(bot_key(bot_id), json.dumps(bot))
@@ -325,6 +349,10 @@ async def seed_examples() -> None:
                     await state.redis.delete(vectors_key(bot_id))
                 changed = True
                 created.append("/chat/" + bot_id + " (documents updated)")
+            capped = capped_llm_budget(bot.get("llm_budget", 0.0), settings.MAX_BOT_LLM_BUDGET)
+            if not bot.get("owner_email") and capped < bot.get("llm_budget", 0.0):
+                bot["llm_budget"] = capped  # sample bots made before the cap existed
+                changed = True
             if changed:
                 await state.redis.set(bot_key(bot_id), json.dumps(bot))
                 state.bot_cache.pop(bot_id, None)

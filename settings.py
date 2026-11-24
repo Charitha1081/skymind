@@ -32,6 +32,12 @@ MEMORY_TTL_SECONDS = int(os.getenv("MEMORY_TTL_SECONDS", "3600"))
 
 # --- spending ---
 HARD_STOP_FACTOR = float(os.getenv("HARD_STOP_FACTOR", "1.2"))  # stop answering at 120% of the model budget
+# Whoever deploys a bot picks its budget, but the model calls are paid by whoever runs this server. So every bot
+# not deployed with the admin token (sample bots included) gets at most this much model spending a month, and all
+# bots together at most MAX_FLEET_LLM_BUDGET (admins exempt, so evaluations still run). 0 = no cap.
+MAX_BOT_LLM_BUDGET = float(os.getenv("MAX_BOT_LLM_BUDGET", "5"))
+MAX_FLEET_LLM_BUDGET = float(os.getenv("MAX_FLEET_LLM_BUDGET", "20"))
+MAX_CONCURRENT_USERS = int(os.getenv("MAX_CONCURRENT_USERS", "100000"))  # a bigger plan is a typo or an attack
 
 # --- security and rate limits ---
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()  # empty: one is generated and printed in the logs

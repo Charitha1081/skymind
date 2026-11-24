@@ -25,3 +25,5 @@ jobs:
         run: python evaluate_search.py --min-recall 0.85
       - name: Routing check
         run: python evaluate.py routing
+      - name: Guard check (common attacks, offline)
+        run: python guard_check.py

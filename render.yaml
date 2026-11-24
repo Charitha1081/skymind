@@ -35,6 +35,10 @@ services:
         value: "20"
       - key: DEPLOY_LIMIT_PER_IP
         value: "10"                  # bot deploys per hour per visitor
+      - key: MAX_BOT_LLM_BUDGET
+        value: "5"                   # $ of model spending per bot per month (bots deployed with the admin token are exempt)
+      - key: MAX_FLEET_LLM_BUDGET
+        value: "20"                  # $ of model spending per month across all bots; raise it when the credit allows
       - key: MAX_BOTS
         value: "20"
       - key: WORKERS

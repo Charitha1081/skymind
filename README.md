@@ -426,7 +426,17 @@ Other: `fernleaf_help_center.md` (sample document to upload), `TODO.md` (roadmap
 
 The load tester reads the admin token automatically (from ADMIN_TOKEN or Redis). For a load test, raise or turn off the per-conversation limit if you lower the think time: `set CHAT_LIMIT_PER_SESSION=0`.
 
+### Guard check: common attacks, tested
 
+`python guard_check.py` tries a well-known list of attacks on quickly built apps against a private in-memory copy of SkyMind (no network, no cost), and CI runs it on every push:
+
+| Result | Attacks |
+|---|---|
+| Blocked (14) | type /admin; change the ID in the URL; API key in the browser; edit the price (a $99,999,999,999 budget); negative or absurd numbers; redeem it 100 times; admin at signup; guess the login code; script in your username; upload a non-photo or fetch a private address; .env in Git; query the database; over budget (one bot, then the whole server); cross-site request (CSRF) |
+| Reduced, not eliminated | prompt injection: documents and messages are treated as data and the prompt holds no secrets, but a model can still be talked off-script |
+| Not applicable | fake a payment (SkyMind takes no payments) |
+
+The first run blocked 11 of 14. The gap: whoever deploys a bot picks its budget, but whoever runs the server pays the model bill, so a visitor could deploy a bot with an enormous budget and chat on the owner's credits, and a negative budget was accepted. Now every bot not deployed with the admin token (sample bots included) gets at most `MAX_BOT_LLM_BUDGET` ($5 by default) of model spending a month, all bots together stop at `MAX_FLEET_LLM_BUDGET` ($20 by default; admins exempt so evaluations still run), and nonsense budgets are refused. Also set a monthly spend limit in the model provider's console: it is the last line of defence.
 
 ## Roadmap
 

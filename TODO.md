@@ -39,6 +39,10 @@ Suggested order: 1 → 2 → 4 → 5 → 9 → 7 → 8 → 6 → 3 → 10 → 12
   - Kestrel held-out done: 50/56 (answerable 39/45 = 87%, refusals 11/11), vs 49/49 on the tuning set. Misses in `docs/error-taxonomy.md`, run 3: 1 wrong answer from the wrong section, 2 search misses, 2 grader errors, 1 empty reply.
   - Fixed (defects, not tuning): empty model replies are now asked again and never replace a real answer (`tests/test_empty_reply.py`); the grader accepts "%"/"percent" and contractions (`tests/test_grader.py`). Next: a Fernleaf held-out set, then measure hybrid search on held-out (Eval track).
 
+## Guard track
+
+- [x] **Guard number:** `guard_check.py` blocks 14 of 14 common attacks (11 of 14 before the budget fix); prompt injection reduced, not eliminated. Runs in CI. Next: run it against the live site's settings once more after deploy, and write it up.
+
 ## Phase 3: Make it legible
 
 - [ ] **10. Technical report** (the headline deliverable), in `docs/report.md`:
