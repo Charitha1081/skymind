@@ -2,6 +2,11 @@
 
 SkyMind is an AI orchestration platform. A company says what it needs ("a chatbot for our customers, around 500 users at a time, answers in under 4 seconds, $600 a month"), adds its documents, and SkyMind works out the capacity and cost, deploys the bot, sends each question to a cheap or a strong model, keeps spending under budget, and reports how it is doing.
 
+- **Live demo:** https://skymind-4abf.onrender.com (free hosting: the first page can take up to a minute to wake up)
+- **Built with:** Python, FastAPI, Redis, the Claude and Gemini APIs (Ollama for local models), Docker, GitHub Actions; hosted on Render.
+- **Built by:** Charithasri Ganga Ande and Naga Rakesh Battu.
+- **Measured:** 93% correct on 121 questions it was never tuned on, every unanswerable question refused, 14 of 14 common attacks blocked (see [Evaluation](#evaluation) and [Security](#security)).
+
 ## The three pages
 
 | Page | Who it is for | What it does |
@@ -206,7 +211,7 @@ pip install -r requirements-dev.txt
 python tests/run_all.py
 ```
 
-Thirteen suites, none of which touch the network or make paid calls:
+Seventeen suites, none of which touch the network or make paid calls:
 
 - the orchestrator (the trace of every answer, the second look, honest refusals)
 - the model router (each signal, how they add up, forced modes)
@@ -221,6 +226,12 @@ Thirteen suites, none of which touch the network or make paid calls:
 - sign-in (real RSA-signed tokens: forged, expired, wrong app, wrong issuer, unverified email and algorithm-swap tokens are all rejected; CSRF; ownership; per-bot access; sign-out)
 - model providers (Claude, Gemini and Ollama request formats, retry, fallback, bad keys, cost)
 - the security and budget fixes (visitor address, monthly budget, DNS pinning, strong-to-cheap fallback, safe concurrent edits)
+- the topic-guided second look (replays real search misses on the handbook)
+- empty model replies (asked again, never shown as an answer)
+- the grader ("%" and "percent", contractions, no new false passes)
+- budget caps (per bot and server-wide, sample bots included, nonsense budgets refused)
+
+`python guard_check.py` also runs in CI: it tries common web-app attacks against a private copy of SkyMind (see [Security](#security)).
 
 ## What happens when a question arrives
 
@@ -301,13 +312,9 @@ set WORKERS=2
 docker compose up --build
 ```
 
-The server and the load tester share one machine, so treat the numbers as a lower bound. Paste the Markdown table it prints into this README as your measured results:
+The server and the load tester share one machine, so treat the numbers as a lower bound.
 
-| Users | Requests | Req/s | Errors | Avg ms | p95 ms | p99 ms |
-|---|---|---|---|---|---|---|
-| 100 | _run the load test_ | | | | | |
-| 500 | | | | | | |
-| 1000 | | | | | | |
+**Not measured yet.** Throughput and p95 latency at 100, 500 and 1,000 users are the Scale track (see `TODO.md`); until then, the traffic numbers in the capacity planner are estimates. Model response times are measured (see [Evaluation](#evaluation)).
 
 ## Capacity planner
 
@@ -392,7 +399,7 @@ The service, in the order a request passes through it:
 
 The parts the orchestrator uses: `router.py` (cheap or strong model, savings), `providers.py` (Claude, Gemini, Ollama behind one interface), `knowledge.py` (splitting and searching documents), `embeddings.py` (meaning search), `jobs.py` (answer, code reviewer, idea partner), `standards.py` (OWASP, PEP 8, clean code rule sets), `web.py` (website lookup), `improve.py` (unanswered questions and ratings), `fixer.py` (Suggest fix), `ingest.py` (PDF, Word and web page import), `auth.py` (Google sign-in, sessions, bot access rules), `planner.py` (capacity and cost), `pages.py` (the web pages), `examples.py` (sample customers).
 
-Quality and testing: `evaluate.py` with `questions.yaml`, `questions_heldout.yaml`, `questions_third.yaml` and `questions_blind.yaml` (evaluation), `tests/` (twelve test suites), `loadtest.py` (load tester).
+Quality and testing: `evaluate.py` and `evaluate_search.py` with `questions.yaml` (tuning set) and `questions_heldout.yaml` (held-out set), `questions_kit.py` and `QUESTION_WRITER_PROMPT.md` (writing held-out questions with another AI), `results/` (the raw results behind the published numbers), `tests/` (seventeen test suites), `guard_check.py` (attack checks), `loadtest.py` (load tester).
 
 Other: `fernleaf_help_center.md` (sample document to upload), `TODO.md` (roadmap), `docs/` (architecture and reversals), `Dockerfile`, `docker-compose.yml`, `render.yaml`, `requirements.txt`, `spec.yaml` and `spec_demo.yaml` (example specs for the planner).
 
